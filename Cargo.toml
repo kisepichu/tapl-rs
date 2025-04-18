@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "lambda",
+]
+workspace.resolver = "3"
