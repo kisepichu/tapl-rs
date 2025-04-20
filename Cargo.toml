@@ -1,6 +1,6 @@
 [workspace]
 
 members = [
-    "lambda",
+    "untyped",
 ]
 workspace.resolver = "3"

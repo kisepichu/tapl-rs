@@ -1,5 +1,5 @@
 [package]
-name = "lambda"
+name = "untyped"
 version = "0.1.0"
 edition = "2024"
 
