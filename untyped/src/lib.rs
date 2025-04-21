@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
-    TmVar(isize, isize),
+    TmVar(usize, isize),
     TmAbs(Box<Term>),
     TmApp(Box<Term>, Box<Term>),
 }
@@ -13,31 +13,29 @@ pub fn print_tm(term: &Term) -> String {
     }
 }
 
-pub fn term_shift(t: &Term, delta: isize) -> Term {
-    fn walk(t: &Term, delta: isize, cutoff: isize) -> Term {
+pub fn term_shift(t: &Term, d: isize) -> Term {
+    fn walk(t: &Term, d: isize, c: usize) -> Term {
         match t {
             Term::TmVar(x, check) => {
-                if *x >= cutoff {
-                    Term::TmVar(*x + delta, check + delta)
+                if *x >= c {
+                    let s: usize = (*x as isize + d).try_into().unwrap();
+                    Term::TmVar(s, check + d)
                 } else {
-                    Term::TmVar(*x, check + delta)
+                    Term::TmVar(*x, check + d)
                 }
             }
-            Term::TmAbs(t1) => Term::TmAbs(Box::new(walk(t1, delta, cutoff + 1))),
-            Term::TmApp(t1, t2) => Term::TmApp(
-                Box::new(walk(t1, delta, cutoff)),
-                Box::new(walk(t2, delta, cutoff)),
-            ),
+            Term::TmAbs(t1) => Term::TmAbs(Box::new(walk(t1, d, c + 1))),
+            Term::TmApp(t1, t2) => Term::TmApp(Box::new(walk(t1, d, c)), Box::new(walk(t2, d, c))),
         }
     }
-    walk(t, delta, 0)
+    walk(t, d, 0)
 }
 
 fn term_subst(j: isize, s: &Term, t: &Term) -> Term {
     fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Term {
         match t {
             Term::TmVar(k, check) => {
-                if *k == j + c {
+                if Some(*k) == (j + c).try_into().ok() {
                     term_shift(s, c)
                 } else {
                     Term::TmVar(*k, *check)
@@ -53,7 +51,6 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Term {
 }
 
 fn term_subst_top(s: &Term, t: &Term) -> Term {
-    // term_subst_except_abs(-1, s, &term_shift(t, -1)) // ?
     term_shift(&term_subst(0, &term_shift(s, 1), t), -1)
 }
 
@@ -75,10 +72,8 @@ fn eval1(t: &Term) -> Result<Term, String> {
 pub fn eval(t: &Term) -> Term {
     let mut t = t.clone();
     while let Ok(t1) = eval1(&t) {
-        println!("{}", print_tm(&t));
         t = t1;
     }
-    println!("{}\n", print_tm(&t));
     t
 }
 
