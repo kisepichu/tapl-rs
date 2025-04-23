@@ -19,7 +19,7 @@ fn main() -> Result<()> {
                         "Evaluate a term in the untyped lambda calculus using de Bruijn indices."
                     );
                     println!("example: (\\\\1 0)\\0 ->* \\(\\0)0");
-                    println!("         (corresponds to (λx.λy.x y)λx.x) ->* λy.(λx.x)y");
+                    println!("         (corresponds to (λx.λy.x y)λx.x ->* λy.(λx.x)y )");
                     println!("Ctrl+C to exit");
                     continue;
                 }
