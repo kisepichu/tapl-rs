@@ -3,16 +3,16 @@ use crate::term::Term;
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
     fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {
         match t {
-            Term::TmVar(x) => {
+            Term::Var(x) => {
                 if *x >= c {
                     let s: usize = (*x as isize + d).try_into().unwrap();
-                    Ok(Term::TmVar(s))
+                    Ok(Term::Var(s))
                 } else {
-                    Ok(Term::TmVar(*x))
+                    Ok(Term::Var(*x))
                 }
             }
-            Term::TmAbs(t1) => Ok(Term::TmAbs(Box::new(walk(t1, d, c + 1)?))),
-            Term::TmApp(t1, t2) => Ok(Term::TmApp(
+            Term::Abs(t1) => Ok(Term::Abs(Box::new(walk(t1, d, c + 1)?))),
+            Term::App(t1, t2) => Ok(Term::App(
                 Box::new(walk(t1, d, c)?),
                 Box::new(walk(t2, d, c)?),
             )),
@@ -24,15 +24,15 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
 fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
     fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
-            Term::TmVar(k) => {
+            Term::Var(k) => {
                 if Some(*k) == (j + c).try_into().ok() {
                     term_shift(s, c)
                 } else {
-                    Ok(Term::TmVar(*k))
+                    Ok(Term::Var(*k))
                 }
             }
-            Term::TmAbs(t1) => Ok(Term::TmAbs(Box::new(walk(j, s, c + 1, t1)?))),
-            Term::TmApp(t1, t2) => Ok(Term::TmApp(
+            Term::Abs(t1) => Ok(Term::Abs(Box::new(walk(j, s, c + 1, t1)?))),
+            Term::App(t1, t2) => Ok(Term::App(
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c, t2)?),
             )),
@@ -46,26 +46,35 @@ fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
 }
 
 fn isval(t: &Term) -> bool {
-    matches!(t, Term::TmAbs(_))
+    matches!(t, Term::Abs(_))
 }
 
 fn eval1(t: &Term) -> Result<Term, String> {
     match t {
-        Term::TmApp(t1, t2) => Ok(match (&**t1, &**t2) {
-            (Term::TmAbs(t12), v2) if isval(v2) => term_subst_top(v2, t12)?,
-            (v1, t2) if isval(v1) => Term::TmApp(Box::new(v1.clone()), Box::new(eval1(t2)?)),
-            _ => Term::TmApp(Box::new(eval1(t1)?), Box::new(*t2.clone())),
+        Term::App(t1, t2) => Ok(match (&**t1, &**t2) {
+            (Term::Abs(t12), v2) if isval(v2) => term_subst_top(v2, t12)?,
+            (v1, t2) if isval(v1) => Term::App(Box::new(v1.clone()), Box::new(eval1(t2)?)),
+            _ => Term::App(Box::new(eval1(t1)?), Box::new(*t2.clone())),
         }),
         _ => Err("eval1: no rule applies".to_string()),
     }
 }
 
-pub fn eval(t: &Term) -> Term {
+pub fn eval(t: &Term) -> Result<Term, String> {
     let mut t = t.clone();
-    while let Ok(t1) = eval1(&t) {
-        t = t1;
+    loop {
+        t = match eval1(&t) {
+            Ok(t1) => t1,
+            Err(e) => {
+                if e == "eval1: no rule applies" {
+                    break;
+                } else {
+                    return Err(e);
+                }
+            }
+        }
     }
-    t
+    Ok(t)
 }
 
 #[cfg(test)]
@@ -75,31 +84,31 @@ mod tests {
     #[test]
     fn test_eval1() {
         // id = \x.x
-        let id = Term::TmAbs(Box::new(Term::TmVar(0)));
+        let id = Term::Abs(Box::new(Term::Var(0)));
         {
             // (\x.x) (\x.x) == \x.x
-            let t = Term::TmApp(Box::new(id.clone()), Box::new(id.clone()));
-            assert_eq!(eval(&t), id);
+            let t = Term::App(Box::new(id.clone()), Box::new(id.clone()));
+            assert_eq!(eval(&t).unwrap(), id);
         }
 
         // tru = \t.\f.t
-        let tru = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(1)))));
+        let tru = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(1)))));
         // fls = \t.\f.f
-        let fls = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))));
+        let fls = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(0)))));
 
         {
             // fls id == id
-            let t = Term::TmApp(Box::new(fls.clone()), Box::new(id.clone()));
-            assert_eq!(eval(&t), id);
+            let t = Term::App(Box::new(fls.clone()), Box::new(id.clone()));
+            assert_eq!(eval(&t).unwrap(), id);
         }
 
         // and = \b.\c.b c fls
         let and = {
-            let fls_ctx2 = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))));
-            Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-                Box::new(Term::TmApp(
-                    Box::new(Term::TmVar(1)), // b
-                    Box::new(Term::TmVar(0)), // c
+            let fls_ctx2 = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(0)))));
+            Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+                Box::new(Term::App(
+                    Box::new(Term::Var(1)), // b
+                    Box::new(Term::Var(0)), // c
                 )),
                 Box::new(fls_ctx2.clone()),
             )))))
@@ -107,99 +116,96 @@ mod tests {
 
         {
             // and fls fls == fls
-            let t = Term::TmApp(
-                Box::new(Term::TmApp(Box::new(and.clone()), Box::new(fls.clone()))),
+            let t = Term::App(
+                Box::new(Term::App(Box::new(and.clone()), Box::new(fls.clone()))),
                 Box::new(fls.clone()),
             );
-            assert_eq!(eval(&t), fls);
+            assert_eq!(eval(&t).unwrap(), fls);
         }
 
         {
             // and tru fls == fls
-            let t = Term::TmApp(
-                Box::new(Term::TmApp(Box::new(and.clone()), Box::new(tru.clone()))),
+            let t = Term::App(
+                Box::new(Term::App(Box::new(and.clone()), Box::new(tru.clone()))),
                 Box::new(fls.clone()),
             );
-            assert_eq!(eval(&t), fls);
+            assert_eq!(eval(&t).unwrap(), fls);
         }
 
         {
             // and tru tru == tru
-            let t = Term::TmApp(
-                Box::new(Term::TmApp(Box::new(and.clone()), Box::new(tru.clone()))),
+            let t = Term::App(
+                Box::new(Term::App(Box::new(and.clone()), Box::new(tru.clone()))),
                 Box::new(tru.clone()),
             );
-            assert_eq!(eval(&t), tru);
+            assert_eq!(eval(&t).unwrap(), tru);
         }
 
         // zero = \s.\z.z
         let zero = fls.clone();
         // suc = \n.\s.\z.s (n s z)
-        let suc = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmAbs(Box::new(
-            Term::TmApp(
-                Box::new(Term::TmVar(1)),
-                Box::new(Term::TmApp(
-                    Box::new(Term::TmApp(
-                        Box::new(Term::TmVar(2)),
-                        Box::new(Term::TmVar(1)),
-                    )),
-                    Box::new(Term::TmVar(0)),
+        let suc = Term::Abs(Box::new(Term::Abs(Box::new(Term::Abs(Box::new(
+            Term::App(
+                Box::new(Term::Var(1)),
+                Box::new(Term::App(
+                    Box::new(Term::App(Box::new(Term::Var(2)), Box::new(Term::Var(1)))),
+                    Box::new(Term::Var(0)),
                 )),
             ),
         ))))));
         // one = \s.\z. s z
-        let one = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-            Box::new(Term::TmVar(1)),
-            Box::new(Term::TmVar(0)),
+        let one = Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+            Box::new(Term::Var(1)),
+            Box::new(Term::Var(0)),
         )))));
 
         {
             // suc zero ~ one
-            let t = Term::TmApp(Box::new(suc.clone()), Box::new(zero.clone()));
-            let eval_t = eval(&t);
+            let t = Term::App(Box::new(suc.clone()), Box::new(zero.clone()));
+            let eval_t = eval(&t).unwrap();
 
             {
                 // eval_t \x.x \x.x == \x.x
-                let t1 = Term::TmApp(
-                    Box::new(Term::TmApp(Box::new(eval_t.clone()), Box::new(id.clone()))),
+                let t1 = Term::App(
+                    Box::new(Term::App(Box::new(eval_t.clone()), Box::new(id.clone()))),
                     Box::new(id.clone()),
                 );
-                let t1o = Term::TmApp(
-                    Box::new(Term::TmApp(Box::new(one.clone()), Box::new(id.clone()))),
+                let t1o = Term::App(
+                    Box::new(Term::App(Box::new(one.clone()), Box::new(id.clone()))),
                     Box::new(id.clone()),
                 );
-                assert_eq!(eval(&t1), eval(&t1o));
-                assert_eq!(eval(&t1), id);
+                assert_eq!(eval(&t1).unwrap(), eval(&t1o).unwrap());
+                assert_eq!(eval(&t1).unwrap(), id);
             }
 
             {
                 // eval_t \x.\y.x \x.x == \y.\x.x
-                let t2 = Term::TmApp(
-                    Box::new(Term::TmApp(Box::new(eval_t.clone()), Box::new(tru.clone()))),
+                let t2 = Term::App(
+                    Box::new(Term::App(Box::new(eval_t.clone()), Box::new(tru.clone()))),
                     Box::new(id.clone()),
                 );
-                let t2o = Term::TmApp(
-                    Box::new(Term::TmApp(Box::new(one.clone()), Box::new(tru.clone()))),
+                let t2o = Term::App(
+                    Box::new(Term::App(Box::new(one.clone()), Box::new(tru.clone()))),
                     Box::new(id.clone()),
                 );
-                assert_eq!(eval(&t2), eval(&t2o));
-                assert_eq!(eval(&t2), fls);
+                assert_eq!(eval(&t2).unwrap(), eval(&t2o).unwrap());
+                assert_eq!(eval(&t2).unwrap(), fls);
             }
         }
 
         // plus = \mnsz.m s (n s z)
-        let _plus = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmAbs(Box::new(
-            Term::TmAbs(Box::new(Term::TmApp(
-                Box::new(Term::TmApp(
-                    Box::new(Term::TmVar(3)), // m
-                    Box::new(Term::TmVar(1)), // s
+        let _plus = Term::Abs(Box::new(Term::Abs(Box::new(Term::Abs(Box::new(
+            Term::Abs(Box::new(Term::App(
+                Box::new(Term::App(
+                    Box::new(Term::Var(3)), // m
+                    Box::new(Term::Var(1)), // s
                 )),
-                Box::new(Term::TmApp(
-                    Box::new(Term::TmApp(
-                        Box::new(Term::TmVar(2)), // n
-                        Box::new(Term::TmVar(1)), // s
+                Box::new(Term::App(
+                    Box::new(Term::App(
+                        Box::new(Term::Var(2)), // n
+                        Box::new(Term::Var(1)), // s
                     )),
-                    Box::new(Term::TmVar(0)), // z
+                    Box::new(Term::Var(0)), // z
                 )),
             ))),
         ))))));

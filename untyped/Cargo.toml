@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 nom = "8.0.0"
 rstest = "0.25.0"
+rustyline = { version = "15.0.0",features = ["with-file-history"] }

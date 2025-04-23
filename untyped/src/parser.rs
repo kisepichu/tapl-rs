@@ -16,7 +16,7 @@ use nom::{
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, x) = take_while(|c: char| c.is_ascii_digit()).parse(i)?;
     if let Ok(n) = x.parse::<usize>() {
-        Ok((i, Term::TmVar(n)))
+        Ok((i, Term::Var(n)))
     } else {
         Err(nom::Err::Error(nom::error::Error::new(i, ErrorKind::Digit)))
     }
@@ -25,7 +25,7 @@ fn parse_var(i: &str) -> IResult<&str, Term> {
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = char('\\')(i)?;
     let (i, t) = parse_term(i)?;
-    Ok((i, Term::TmAbs(Box::new(t))))
+    Ok((i, Term::Abs(Box::new(t))))
 }
 
 fn parse_app(i: &str) -> IResult<&str, Term> {
@@ -33,7 +33,7 @@ fn parse_app(i: &str) -> IResult<&str, Term> {
     let (i, rest) = nom::multi::many1(parse_atom).parse(i)?;
     let res = rest
         .into_iter()
-        .fold(first, |acc, t| Term::TmApp(Box::new(acc), Box::new(t)));
+        .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
 
     Ok((i, res))
 }
@@ -67,94 +67,91 @@ pub fn parse(input: &str) -> Result<Term, String> {
 use rstest::rstest;
 
 #[rstest]
-#[case("1", Some(Term::TmVar(1)))]
-#[case(r"\0", Some(Term::TmAbs(Box::new(Term::TmVar(0)))))]
-#[case(r"(\0)", Some(Term::TmAbs(Box::new(Term::TmVar(0)))))]
+#[case("1", Some(Term::Var(1)))]
+#[case(r"\0", Some(Term::Abs(Box::new(Term::Var(0)))))]
+#[case(r"(\0)", Some(Term::Abs(Box::new(Term::Var(0)))))]
 #[case(
     r"(\0) 1",
-    Some(Term::TmApp(
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))),
-        Box::new(Term::TmVar(1))
-    ))
+    Some(Term::App(Box::new(Term::Abs(Box::new(Term::Var(0)))), Box::new(Term::Var(1))))
 )]
 #[case(
     r"(\0) (\0)",
-    Some(Term::TmApp(
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::App(
+        Box::new(Term::Abs(Box::new(Term::Var(0)))),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))
 )]
 #[case(
     r"(\0) (\0) (\0)",
-    Some(Term::TmApp(
-        Box::new(Term::TmApp(
-            Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))),
-            Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::App(
+        Box::new(Term::App(
+            Box::new(Term::Abs(Box::new(Term::Var(0)))),
+            Box::new(Term::Abs(Box::new(Term::Var(0))))
         )),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))
 )]
 #[case(
     r"\\1\0",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"\\1\(0)",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"\\1(\0)",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"\\(1\0)",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"\(\1\0)",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"(\\1\0)",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"\\(1)\0",
-    Some(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmVar(1)),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Var(1)),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))))
 )]
 #[case(
     r"\(\1)\0",
-    Some(Term::TmAbs(Box::new(Term::TmApp(
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(1)))),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::Abs(Box::new(Term::App(
+        Box::new(Term::Abs(Box::new(Term::Var(1)))),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))))
 )]
 #[case(
     r"(\\1)\0",
-    Some(Term::TmApp(
-        Box::new(Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(1)))))),
-        Box::new(Term::TmAbs(Box::new(Term::TmVar(0))))
+    Some(Term::App(
+        Box::new(Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(1)))))),
+        Box::new(Term::Abs(Box::new(Term::Var(0))))
     ))
 )]
 #[case(r"\", None)]
