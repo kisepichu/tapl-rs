@@ -1,27 +1,14 @@
-#[derive(Debug, Clone, PartialEq)]
-pub enum Term {
-    TmVar(usize, isize),
-    TmAbs(Box<Term>),
-    TmApp(Box<Term>, Box<Term>),
-}
+use crate::term::Term;
 
-pub fn print_tm(term: &Term) -> String {
-    match term {
-        Term::TmVar(x, _check) => format!("{}", x),
-        Term::TmAbs(t) => format!("(\\{})", print_tm(t)),
-        Term::TmApp(t1, t2) => format!("({} {})", print_tm(t1), print_tm(t2)),
-    }
-}
-
-pub fn term_shift(t: &Term, d: isize) -> Term {
+fn term_shift(t: &Term, d: isize) -> Term {
     fn walk(t: &Term, d: isize, c: usize) -> Term {
         match t {
-            Term::TmVar(x, check) => {
+            Term::TmVar(x) => {
                 if *x >= c {
                     let s: usize = (*x as isize + d).try_into().unwrap();
-                    Term::TmVar(s, check + d)
+                    Term::TmVar(s)
                 } else {
-                    Term::TmVar(*x, check + d)
+                    Term::TmVar(*x)
                 }
             }
             Term::TmAbs(t1) => Term::TmAbs(Box::new(walk(t1, d, c + 1))),
@@ -34,11 +21,11 @@ pub fn term_shift(t: &Term, d: isize) -> Term {
 fn term_subst(j: isize, s: &Term, t: &Term) -> Term {
     fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Term {
         match t {
-            Term::TmVar(k, check) => {
+            Term::TmVar(k) => {
                 if Some(*k) == (j + c).try_into().ok() {
                     term_shift(s, c)
                 } else {
-                    Term::TmVar(*k, *check)
+                    Term::TmVar(*k)
                 }
             }
             Term::TmAbs(t1) => Term::TmAbs(Box::new(walk(j, s, c + 1, t1))),
@@ -84,7 +71,7 @@ mod tests {
     #[test]
     fn test_eval1() {
         // id = \x.x
-        let id = Term::TmAbs(Box::new(Term::TmVar(0, 1)));
+        let id = Term::TmAbs(Box::new(Term::TmVar(0)));
         {
             // (\x.x) (\x.x) == \x.x
             let t = Term::TmApp(Box::new(id.clone()), Box::new(id.clone()));
@@ -92,9 +79,9 @@ mod tests {
         }
 
         // tru = \t.\f.t
-        let tru = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(1, 2)))));
+        let tru = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(1)))));
         // fls = \t.\f.f
-        let fls = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(0, 2)))));
+        let fls = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))));
 
         {
             // fls id == id
@@ -104,11 +91,11 @@ mod tests {
 
         // and = \b.\c.b c fls
         let and = {
-            let fls_ctx2 = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(0, 4)))));
+            let fls_ctx2 = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmVar(0)))));
             Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
                 Box::new(Term::TmApp(
-                    Box::new(Term::TmVar(1, 2)), // b
-                    Box::new(Term::TmVar(0, 2)), // c
+                    Box::new(Term::TmVar(1)), // b
+                    Box::new(Term::TmVar(0)), // c
                 )),
                 Box::new(fls_ctx2.clone()),
             )))))
@@ -146,20 +133,20 @@ mod tests {
         // suc = \n.\s.\z.s (n s z)
         let suc = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmAbs(Box::new(
             Term::TmApp(
-                Box::new(Term::TmVar(1, 3)),
+                Box::new(Term::TmVar(1)),
                 Box::new(Term::TmApp(
                     Box::new(Term::TmApp(
-                        Box::new(Term::TmVar(2, 3)),
-                        Box::new(Term::TmVar(1, 3)),
+                        Box::new(Term::TmVar(2)),
+                        Box::new(Term::TmVar(1)),
                     )),
-                    Box::new(Term::TmVar(0, 3)),
+                    Box::new(Term::TmVar(0)),
                 )),
             ),
         ))))));
         // one = \s.\z. s z
         let one = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmApp(
-            Box::new(Term::TmVar(1, 2)),
-            Box::new(Term::TmVar(0, 2)),
+            Box::new(Term::TmVar(1)),
+            Box::new(Term::TmVar(0)),
         )))));
 
         {
@@ -200,15 +187,15 @@ mod tests {
         let _plus = Term::TmAbs(Box::new(Term::TmAbs(Box::new(Term::TmAbs(Box::new(
             Term::TmAbs(Box::new(Term::TmApp(
                 Box::new(Term::TmApp(
-                    Box::new(Term::TmVar(3, 4)), // m
-                    Box::new(Term::TmVar(1, 4)), // s
+                    Box::new(Term::TmVar(3)), // m
+                    Box::new(Term::TmVar(1)), // s
                 )),
                 Box::new(Term::TmApp(
                     Box::new(Term::TmApp(
-                        Box::new(Term::TmVar(2, 4)), // n
-                        Box::new(Term::TmVar(1, 4)), // s
+                        Box::new(Term::TmVar(2)), // n
+                        Box::new(Term::TmVar(1)), // s
                     )),
-                    Box::new(Term::TmVar(0, 4)), // z
+                    Box::new(Term::TmVar(0)), // z
                 )),
             ))),
         ))))));
