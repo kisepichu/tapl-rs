@@ -3,4 +3,4 @@
 members = [
     "untyped",
 ]
-workspace.resolver = "3"
+resolver = "3"
