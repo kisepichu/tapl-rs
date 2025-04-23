@@ -1,44 +1,48 @@
 use crate::term::Term;
 
-fn term_shift(t: &Term, d: isize) -> Term {
-    fn walk(t: &Term, d: isize, c: usize) -> Term {
+fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
+    fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {
         match t {
             Term::TmVar(x) => {
                 if *x >= c {
                     let s: usize = (*x as isize + d).try_into().unwrap();
-                    Term::TmVar(s)
+                    Ok(Term::TmVar(s))
                 } else {
-                    Term::TmVar(*x)
+                    Ok(Term::TmVar(*x))
                 }
             }
-            Term::TmAbs(t1) => Term::TmAbs(Box::new(walk(t1, d, c + 1))),
-            Term::TmApp(t1, t2) => Term::TmApp(Box::new(walk(t1, d, c)), Box::new(walk(t2, d, c))),
+            Term::TmAbs(t1) => Ok(Term::TmAbs(Box::new(walk(t1, d, c + 1)?))),
+            Term::TmApp(t1, t2) => Ok(Term::TmApp(
+                Box::new(walk(t1, d, c)?),
+                Box::new(walk(t2, d, c)?),
+            )),
         }
     }
     walk(t, d, 0)
 }
 
-fn term_subst(j: isize, s: &Term, t: &Term) -> Term {
-    fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Term {
+fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
+    fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
             Term::TmVar(k) => {
                 if Some(*k) == (j + c).try_into().ok() {
                     term_shift(s, c)
                 } else {
-                    Term::TmVar(*k)
+                    Ok(Term::TmVar(*k))
                 }
             }
-            Term::TmAbs(t1) => Term::TmAbs(Box::new(walk(j, s, c + 1, t1))),
-            Term::TmApp(t1, t2) => {
-                Term::TmApp(Box::new(walk(j, s, c, t1)), Box::new(walk(j, s, c, t2)))
-            }
+            Term::TmAbs(t1) => Ok(Term::TmAbs(Box::new(walk(j, s, c + 1, t1)?))),
+            Term::TmApp(t1, t2) => Ok(Term::TmApp(
+                Box::new(walk(j, s, c, t1)?),
+                Box::new(walk(j, s, c, t2)?),
+            )),
         }
     }
     walk(j, s, 0, t)
 }
 
-fn term_subst_top(s: &Term, t: &Term) -> Term {
-    term_shift(&term_subst(0, &term_shift(s, 1), t), -1)
+fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
+    term_shift(&term_subst(0, &term_shift(s, 1)?, t)?, -1)
 }
 
 fn isval(t: &Term) -> bool {
@@ -48,7 +52,7 @@ fn isval(t: &Term) -> bool {
 fn eval1(t: &Term) -> Result<Term, String> {
     match t {
         Term::TmApp(t1, t2) => Ok(match (&**t1, &**t2) {
-            (Term::TmAbs(t12), v2) if isval(v2) => term_subst_top(v2, t12),
+            (Term::TmAbs(t12), v2) if isval(v2) => term_subst_top(v2, t12)?,
             (v1, t2) if isval(v1) => Term::TmApp(Box::new(v1.clone()), Box::new(eval1(t2)?)),
             _ => Term::TmApp(Box::new(eval1(t1)?), Box::new(*t2.clone())),
         }),
