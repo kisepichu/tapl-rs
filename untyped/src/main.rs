@@ -1,6 +1,6 @@
 mod eval;
 mod parser;
-mod term;
+mod syntax;
 
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
@@ -32,7 +32,7 @@ fn main() -> Result<()> {
                     }
                 };
 
-                println!("input: {}", term::print_tm(&t));
+                println!("input: {}", t.print_tm());
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                println!("   ->* {}", term::print_tm(&t));
+                println!("   ->* {}", t.print_tm());
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

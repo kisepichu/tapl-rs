@@ -1,4 +1,4 @@
-use crate::syntax::Term;
+use crate::syntax::term::Term;
 use nom::{
     IResult, Parser,
     branch::alt,
