@@ -2,57 +2,54 @@ use crate::term::Term;
 use nom::{
     IResult, Parser,
     branch::alt,
-    bytes::complete::take_while,
-    character::complete::{char, multispace0},
-    error::ErrorKind,
-    sequence::delimited,
+    character::complete::{char, digit1, multispace0},
+    combinator::map_res,
+    sequence::{delimited, preceded},
 };
 
-// term = var | abs | app
-// var = NUMBER
-// abs = "\" term
-// app = term term
-
+// <term> ::= <app>
+/// <app> ::= <atom> <app> | <atom>
+/// <atom> ::= <encl> | <abs> | <var>
+// <encl> ::= "(" <term> ")"
+// <abs> ::= "\" <term>
+// <var> ::= number
+/// <var> ::= number
 fn parse_var(i: &str) -> IResult<&str, Term> {
-    let (i, x) = take_while(|c: char| c.is_ascii_digit()).parse(i)?;
-    if let Ok(n) = x.parse::<usize>() {
-        Ok((i, Term::Var(n)))
-    } else {
-        Err(nom::Err::Error(nom::error::Error::new(i, ErrorKind::Digit)))
-    }
+    map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
 }
 
+/// <abs> ::= "\" <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
-    let (i, _) = char('\\')(i)?;
-    let (i, t) = parse_term(i)?;
-    Ok((i, Term::Abs(Box::new(t))))
+    map_res(
+        preceded(char('\\'), parse_term),
+        |t| -> Result<_, nom::error::Error<&str>> { Ok(Term::Abs(Box::new(t))) },
+    )
+    .parse(i)
 }
 
+/// <encl> ::= "(" <term> ")"
+fn parse_encl(i: &str) -> IResult<&str, Term> {
+    delimited(char('('), parse_term, char(')')).parse(i)
+}
+
+/// <atom> ::= <var> | <abs> | <encl>
+fn parse_atom(i: &str) -> IResult<&str, Term> {
+    preceded(multispace0, alt((parse_encl, parse_abs, parse_var))).parse(i)
+}
+
+/// <app> ::= <atom> <app> | <atom>
 fn parse_app(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_atom.parse(i)?;
-    let (i, rest) = nom::multi::many1(parse_atom).parse(i)?;
-    let res = rest
+    let (i, rest) = nom::multi::many0(parse_atom).parse(i)?;
+    let t = rest
         .into_iter()
         .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
-
-    Ok((i, res))
-}
-
-fn parse_atom(i: &str) -> IResult<&str, Term> {
-    let (i, _) = multispace0.parse(i)?;
-    alt((parse_paren, parse_abs, parse_var)).parse(i)
-}
-
-fn parse_paren(i: &str) -> IResult<&str, Term> {
-    let (i, t) = delimited(char('('), parse_term, char(')')).parse(i)?;
     Ok((i, t))
 }
 
+/// <term> ::= <app>
 fn parse_term(i: &str) -> IResult<&str, Term> {
-    let (i, _) = multispace0.parse(i)?;
-    alt((parse_app, parse_atom))
-        .parse(i)
-        .map_err(|_| nom::Err::Error(nom::error::Error::new(i, ErrorKind::Alt)))
+    preceded(multispace0, parse_app).parse(i)
 }
 
 pub fn parse(input: &str) -> Result<Term, String> {
