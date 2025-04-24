@@ -192,22 +192,5 @@ mod tests {
                 assert_eq!(eval(&t2).unwrap(), fls);
             }
         }
-
-        // plus = \mnsz.m s (n s z)
-        let _plus = Term::Abs(Box::new(Term::Abs(Box::new(Term::Abs(Box::new(
-            Term::Abs(Box::new(Term::App(
-                Box::new(Term::App(
-                    Box::new(Term::Var(3)), // m
-                    Box::new(Term::Var(1)), // s
-                )),
-                Box::new(Term::App(
-                    Box::new(Term::App(
-                        Box::new(Term::Var(2)), // n
-                        Box::new(Term::Var(1)), // s
-                    )),
-                    Box::new(Term::Var(0)), // z
-                )),
-            ))),
-        ))))));
     }
 }

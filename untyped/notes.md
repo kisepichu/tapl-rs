@@ -1,8 +1,10 @@
 ## Untyped lambda calculus ($\lambda$)
 
+p.54, p.61
+
 ### Syntax
 
-`fn parse` in [untyped/src/parser.rs](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/parser.rs), `enum Term` in [untyped/src/term.rs](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/term.rs)
+`fn parse` in [`untyped/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/parser.rs), `enum Term` in [`untyped/src/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/term.rs)
 
 #### Concrete syntax
 
@@ -35,11 +37,11 @@ $$
 
 ### evaluation
 
-`fn eval1` in [untyped/src/eval.rs](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/eval.rs) 
+`fn eval1` in [`untyped/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/eval.rs) 
 
 $$
 \begin{align*}
-\frac{}{(\lambda.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [0 \mapsto\ \uparrow^{1} v_2]t_{12}} \quad &\text{(E-APPABS)} \\
+\frac{}{(\lambda.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [`0 \mapsto\ \uparrow^{1} v_2`]t_{12}} \quad &\text{(E-APPABS)} \\
 \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
