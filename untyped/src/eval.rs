@@ -54,7 +54,7 @@ fn eval1(t: &Term) -> Result<Term, String> {
         Term::App(t1, t2) => Ok(match (&**t1, &**t2) {
             (Term::Abs(t12), v2) if isval(v2) => term_subst_top(v2, t12)?,
             (v1, t2) if isval(v1) => Term::App(Box::new(v1.clone()), Box::new(eval1(t2)?)),
-            _ => Term::App(Box::new(eval1(t1)?), Box::new(*t2.clone())),
+            _ => Term::App(Box::new(eval1(t1)?), t2.clone()),
         }),
         _ => Err("eval1: no rule applies".to_string()),
     }
