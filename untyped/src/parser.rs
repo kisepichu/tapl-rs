@@ -29,7 +29,7 @@ fn parse_abs(i: &str) -> IResult<&str, Term> {
 
 /// <encl> ::= "(" <term> ")"
 fn parse_encl(i: &str) -> IResult<&str, Term> {
-    delimited(char('('), parse_term, char(')')).parse(i)
+    delimited(char('('), parse_term_space, char(')')).parse(i)
 }
 
 /// <atom> ::= <var> | <abs> | <encl>
@@ -52,8 +52,14 @@ fn parse_term(i: &str) -> IResult<&str, Term> {
     preceded(multispace0, parse_app).parse(i)
 }
 
+fn parse_term_space(i: &str) -> IResult<&str, Term> {
+    let (i, t) = parse_term(i)?;
+    let (i, _) = multispace0(i)?;
+    Ok((i, t))
+}
+
 pub fn parse(input: &str) -> Result<Term, String> {
-    let (rest, t) = parse_term(input).map_err(|e| e.to_string())?;
+    let (rest, t) = parse_term_space(input).map_err(|e| e.to_string())?;
     if rest.is_empty() {
         Ok(t)
     } else {
@@ -65,10 +71,10 @@ use rstest::rstest;
 
 #[rstest]
 #[case("1", Some(Term::Var(1)))]
-#[case(r"\0", Some(Term::Abs(Box::new(Term::Var(0)))))]
-#[case(r"(\0)", Some(Term::Abs(Box::new(Term::Var(0)))))]
+#[case(r"\0 ", Some(Term::Abs(Box::new(Term::Var(0)))))]
+#[case(r"(\0 )", Some(Term::Abs(Box::new(Term::Var(0)))))]
 #[case(
-    r"(\0) 1",
+    r"( \0) 1",
     Some(Term::App(Box::new(Term::Abs(Box::new(Term::Var(0)))), Box::new(Term::Var(1))))
 )]
 #[case(
