@@ -23,8 +23,8 @@ use nom::{
 
 // <ty> ::= <tyarr>
 // <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-// <tyatom> ::= <tyencl> | <tybool>
 // <tyarrsub> ::= "->" <ty>
+// <tyatom> ::= <tyencl> | <tybool>
 // <tyencl> ::= "(" <ty> ")"
 // <tybool> ::= "Bool"
 

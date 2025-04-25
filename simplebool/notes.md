@@ -2,8 +2,6 @@
 
 p.78, p.70, p.25
 
-WIP
-
 ### Syntax
 
 `fn parse` in [`simplebool/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/parser.rs), `enum Term` in [`simplebool/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/syntax/term.rs)
@@ -23,8 +21,8 @@ WIP
 
 <ty> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-<tyatom> ::= <tyencl> | <tybool>
 <tyarrsub> ::= "->" <ty>
+<tyatom> ::= <tyencl> | <tybool>
 <tyencl> ::= "(" <ty> ")"
 <tybool> ::= "Bool"
 ```
@@ -58,7 +56,7 @@ T ::=&   &\quad (\text{types}) \\
 
 - `<var>`, `<abs>`, `<true>`, `<false>`, `<if>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
-- `<tybool>` は boolean に変換され、 `<ty>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
+- `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
 
 ### evaluation
 
@@ -82,6 +80,8 @@ T ::=&   &\quad (\text{types}) \\
 
 ### typing
 
+`fn type_of` in [`simplebool/src/typing.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/typing.rs)
+
 ```math
 \begin{align*}
 \frac{x\mathord{:}T \in \Gamma}{\Gamma \vdash x \mathord{:} T} \quad &\text{(T-VAR)} \\
@@ -97,5 +97,7 @@ T ::=&   &\quad (\text{types}) \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad &\text{(T-IF)} \\
 \end{align*}
 ```
+
+型検査関数は、逆転補題の写しとみなせる。 p.86, p.79
 
 ### examples
