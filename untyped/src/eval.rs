@@ -93,22 +93,19 @@ mod tests {
         let fls = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(0)))));
 
         {
-            // fls id == id
+            // (\t.\f.f) id == id
             let t = Term::App(Box::new(fls.clone()), Box::new(id.clone()));
             assert_eq!(eval(&t).unwrap(), id);
         }
 
         // and = \b.\c.b c fls
-        let and = {
-            let fls_ctx2 = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(0)))));
-            Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
-                Box::new(Term::App(
-                    Box::new(Term::Var(1)), // b
-                    Box::new(Term::Var(0)), // c
-                )),
-                Box::new(fls_ctx2.clone()),
-            )))))
-        };
+        let and = Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+            Box::new(Term::App(
+                Box::new(Term::Var(1)), // b
+                Box::new(Term::Var(0)), // c
+            )),
+            Box::new(fls.clone()),
+        )))));
 
         {
             // and fls fls == fls

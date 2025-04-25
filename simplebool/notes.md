@@ -1,6 +1,6 @@
 ## Simply typed lambda calculus($\lambda_{\rightarrow}$) + Bool
 
-p.78, p.70
+p.78, p.70, p.25
 
 WIP
 

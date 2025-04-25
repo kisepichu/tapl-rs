@@ -3,8 +3,8 @@ mod syntax;
 
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
-
-use syntax::parser;
+use syntax::term::Term;
+use syntax::ty::Type;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
@@ -12,7 +12,7 @@ fn main() -> Result<()> {
         let readline = rl.readline("> ");
         match readline {
             Ok(line) => {
-                if line == "exit" {
+                if line == "exit" || line == "q" {
                     break;
                 }
                 if line == "help" || line == "?" {
@@ -25,15 +25,16 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                let t = match parser::parse(line.as_str()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        println!("parse error: {:?}", e);
-                        continue;
-                    }
-                };
+                // let t = match parser::parse(line.as_str()) {
+                //     Ok(t) => t,
+                //     Err(e) => {
+                //         println!("parse error: {:?}", e);
+                //         continue;
+                //     }
+                // };
+                let t = Term::Abs(Box::new(Term::Var(0)), Type::Bool); // todo
 
-                println!("input: {}", t.print_tm());
+                println!("input: {}", t);
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
@@ -41,7 +42,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                println!("   ->* {}", t.print_tm());
+                println!("   ->* {}", t);
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

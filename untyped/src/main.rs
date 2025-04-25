@@ -11,7 +11,7 @@ fn main() -> Result<()> {
         let readline = rl.readline("> ");
         match readline {
             Ok(line) => {
-                if line == "exit" {
+                if line == "exit" || line == "q" {
                     break;
                 }
                 if line == "help" || line == "?" {
@@ -32,7 +32,7 @@ fn main() -> Result<()> {
                     }
                 };
 
-                println!("input: {}", t.print_tm());
+                println!("input: {}", t);
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                println!("   ->* {}", t.print_tm());
+                println!("   ->* {}", t);
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

@@ -44,7 +44,7 @@ const EQUAL: &str = r"(
 fn test_parse_and_eval(#[case] input: &str, #[case] expected: &str) {
     let t = untyped::parser::parse(input).unwrap();
     let t = eval::eval(&t).unwrap();
-    let s = t.print_tm();
+    let s = t.to_string();
     if s != expected {
         println!("got term: {:?}",t);
         panic!("expected: {}, \ngot:      {}", expected, s);
@@ -77,7 +77,7 @@ fn test_parse_and_eval_equal(#[case] input: &str, #[case] expected: &str) {
     let input = EQUAL.to_string() + input;
     let t = untyped::parser::parse(input.as_str()).unwrap();
     let t = eval::eval(&t).unwrap();
-    let s = t.print_tm();
+    let s = t.to_string();
     if s != expected {
         panic!("expected: {}, \ngot:      {}", expected, s);
     }
