@@ -1,6 +1,6 @@
 use std::iter::once;
 
-use crate::syntax::{term::Term, ty::Type};
+use crate::syntax::{term::Term, r#type::Type};
 use nom::{
     IResult, Parser,
     branch::alt,

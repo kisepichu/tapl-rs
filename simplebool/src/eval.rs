@@ -94,7 +94,7 @@ pub fn eval(t: &Term) -> Result<Term, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::syntax::ty::Type;
+    use crate::syntax::r#type::Type;
 
     use super::*;
 

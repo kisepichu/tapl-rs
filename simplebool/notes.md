@@ -1,12 +1,12 @@
-## Simply typed lambda calculus($\lambda_{\rightarrow}$) + Bool
+# Simply typed lambda calculus($\lambda_{\rightarrow}$) + Bool
 
 p.78, p.70, p.25
 
-### Syntax
+## Syntax
 
 `fn parse` in [`simplebool/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/parser.rs), `enum Term` in [`simplebool/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/syntax/term.rs)
 
-#### Concrete syntax
+### Concrete syntax
 
 ```bnf
 <term> ::= <app>
@@ -27,7 +27,7 @@ p.78, p.70, p.25
 <tybool> ::= "Bool"
 ```
 
-#### Abstract syntax
+### Abstract syntax
 
 ```math
 \begin{align*}
@@ -58,7 +58,7 @@ T ::=&   &\quad (\text{types}) \\
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
 
-### evaluation
+## evaluation
 
 `fn eval1` in [`simplebool/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/eval.rs)
 
@@ -78,7 +78,7 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-### typing
+## typing
 
 `fn type_of` in [`simplebool/src/typing.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/typing.rs)
 
@@ -98,6 +98,6 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-型検査関数は、逆転補題の写しとみなせる。 p.86, p.79
+型チェック関数は、逆転補題の写しとみなせる。 p.86, p.79
 
 ### examples

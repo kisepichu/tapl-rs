@@ -18,11 +18,14 @@ fn main() -> Result<()> {
                     break;
                 }
                 if line == "help" || line == "?" {
+                    println!("Type check and evaluate a term in simply typed lambda calculus.");
                     println!(
-                        "Evaluate a term in the untyped lambda calculus using de Bruijn indices."
+                        "example: (\\:Bool.if 0 then \\:Bool.\\:Bool.1 else \\:Bool.\\:Bool.0) true"
                     );
-                    println!("example: (\\\\1 0)\\0 ->* \\(\\0)0");
-                    println!("         (corresponds to (λx.λy.x y)λx.x ->* λy.(λx.x)y )");
+                    println!(
+                        "                                                   : Bool->Bool->Bool"
+                    );
+                    println!("     ->* \\:Bool.\\:Bool.1");
                     println!("Ctrl+C to exit");
                     continue;
                 }
@@ -34,16 +37,19 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
+                // println!("{:?}", t);
 
                 let ctx = Context::default();
 
                 let ty = match type_of(&ctx, &t) {
                     Ok(ty) => ty,
                     Err(e) => {
+                        println!("input: {}", t);
                         println!("{}", e);
                         continue;
                     }
                 };
+                // println!("{:?}", ty);
 
                 println!("input: {}: {}", t, ty);
                 let t = match eval::eval(&t) {

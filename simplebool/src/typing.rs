@@ -1,11 +1,16 @@
-use crate::syntax::{context::Context, term::Term, ty::Type};
+use rstest::rstest;
+
+use crate::syntax::{context::Context, term::Term, r#type::Type};
 
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
         Term::Var(x) => match ctx.get(*x) {
             Some(ty) => Ok(ty.clone()),
-            None => Err(format!("type_of: unbound variable {}", x)),
+            None => Err(format!(
+                "type checked failed: {}\n: unbound variable {}",
+                t, x
+            )),
         },
         Term::Abs(t2, ty) => {
             let ctx = ctx.clone().push(ty.clone());
@@ -20,9 +25,15 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                     if *ty11 == ty2 {
                         Ok(*ty12.clone())
                     } else {
+                        let t1 = t1.to_string();
+                        let t1 = if t1.len() <= 20 {
+                            t1
+                        } else {
+                            t1[..20].to_string() + "..."
+                        };
                         Err(format!(
-                            "type check failed: {}\n  argument to the term {} is incorrect:\n  expected: {}, found: {}",
-                            t, t1, ty11, ty2
+                            "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
+                            t, t1, ty11, t2, ty2
                         ))
                     }
                 }
@@ -52,5 +63,104 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 ))
             }
         }
+    }
+}
+
+#[rstest]
+#[case(r"true", Some(Type::Bool))]
+#[case(r"false", Some(Type::Bool))]
+#[case(
+    r"\:Bool.0",
+    Some(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
+)]
+#[case(
+    r"\:Bool.\:Bool.0",
+    Some(Type::Arr(
+        Box::new(Type::Bool),
+        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
+    ))
+)]
+#[case(
+    r"\:Bool->Bool.0",
+    Some(Type::Arr(
+        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+    ))
+)]
+#[case(r"if true then false else true", Some(Type::Bool))]
+#[case(r"if true then false else 1", None)]
+#[case(r"if 1 then false else true", None)]
+#[case(
+    r"(\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true",
+    Some(Type::Arr(
+        Box::new(Type::Bool),
+        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+    ))
+)]
+#[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
+#[case(
+    r"(\:(Bool->Bool)->Bool.0) \:Bool->Bool.0 true",
+    Some(Type::Arr(
+        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+        Box::new(Type::Bool)
+    ))
+)]
+#[case(
+    r"
+(\:Bool->Bool. \:Bool->Bool.
+    if 0 true then
+        if 1 true then false else true
+    else
+        if 1 true then true else false
+)
+(\:Bool.0)
+\:Bool.if 0 then false else true",
+    Some(Type::Bool)
+)]
+#[case(
+    r"
+(\:Bool->Bool. \:Bool->Bool.
+    if 0 true then
+        if 1 true then false else true
+    else
+        if 1 true then true else false
+)
+(\:Bool->Bool.0)
+\:Bool.if 0 then false else true",
+    None
+)]
+#[case(
+    r"
+(\:Bool->Bool. \:Bool->Bool.
+    if 0 true then
+        if 1 true then 0 else 1
+    else
+        if 1 true then 1 else 0
+)
+(\:Bool->Bool.0)
+\:Bool.if 0 then false else true",
+    None
+)]
+#[case(
+    r"
+(\:Bool->Bool. \:Bool->Bool.
+    if 0 true then
+        1
+    else
+        2
+)
+(\:Bool.0)
+\:Bool.if 0 then false else true",
+    None
+)]
+fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
+    use crate::parser;
+
+    let ctx = Context::default();
+    let t = parser::parse(input).unwrap();
+    let ty = type_of(&ctx, &t);
+    match expected {
+        Some(ty2) => assert_eq!(ty.unwrap(), ty2),
+        None => assert!(ty.is_err()),
     }
 }

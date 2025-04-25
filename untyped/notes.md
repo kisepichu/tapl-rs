@@ -1,12 +1,12 @@
-## Untyped lambda calculus ($\lambda$)
+# Untyped lambda calculus ($\lambda$)
 
 p.54, p.61
 
-### Syntax
+## Syntax
 
 `fn parse` in [`untyped/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/parser.rs), `enum Term` in [`untyped/src/syntax.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/syntax.rs)
 
-#### Concrete syntax
+### Concrete syntax
 
 ```bnf
 <term> ::= <app>
@@ -17,7 +17,7 @@ p.54, p.61
 <var> ::= number
 ```
 
-#### Abstract syntax
+### Abstract syntax
 
 ```math
 \begin{align*}
@@ -35,7 +35,7 @@ v ::=&   &\quad (\text{values}) \\
 - `<abs>` は、 abstraction に変換される。
 - `<var>` は、 variable に変換される。
 
-### evaluation
+## evaluation
 
 `fn eval1` in [`untyped/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/eval.rs)
 
@@ -49,7 +49,7 @@ $$
 \end{align*}
 $$
 
-### examples
+## examples
 
 ```
     (\\1 0)\0

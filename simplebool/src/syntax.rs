@@ -1,3 +1,3 @@
 pub mod context;
 pub mod term;
-pub mod ty;
+pub mod r#type;

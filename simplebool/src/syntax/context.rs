@@ -1,4 +1,4 @@
-use super::ty::Type;
+use super::r#type::Type;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Context {
