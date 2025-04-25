@@ -17,14 +17,16 @@ WIP
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
-<ty> ::= <tyatom> <tyarr> | <tyatom>
-<tyatom> ::= <tyencl> | <tybool>
-<tyarr> ::= "->" <ty>
-<tyencl> ::= "(" <ty> ")"
-<tybool> ::= "Bool"
 <var> ::= number
 <true> ::= "true"
 <false> ::= "false"
+
+<ty> ::= <tyarr>
+<tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
+<tyatom> ::= <tyencl> | <tybool>
+<tyarrsub> ::= "->" <ty>
+<tyencl> ::= "(" <ty> ")"
+<tybool> ::= "Bool"
 ```
 
 #### Abstract syntax
@@ -32,30 +34,31 @@ WIP
 ```math
 \begin{align*}
 t ::=&   &\quad (\text{terms}) \\
-  \mid\ &x &\quad (\text{variable}) \\
-  \mid\ &\lambda\mathord{:}T.t_2  &\quad (\text{abstraction}) \\
-  \mid\ &t_1\ t_2 &\quad (\text{application}) \\
-  \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
-  \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
-  \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
+  \quad \mid\ &x &\quad (\text{variable}) \\
+  \quad \mid\ &\lambda\mathord{:}T.t_2  &\quad (\text{abstraction}) \\
+  \quad \mid\ &t_1\ t_2 &\quad (\text{application}) \\
+  \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
+  \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
+  \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \\
 v ::=&   &\quad (\text{values}) \\
-  \mid\ &\lambda\mathord{:}T.t_2 &\quad (\text{abstraction value}) \\
-  \mid\ &\mathrm{true} &\quad (\text{true}) \\
-  \mid\ &\mathrm{false} &\quad (\text{false}) \\
+  \quad \mid\ &\lambda\mathord{:}T.t_2 &\quad (\text{abstraction value}) \\
+  \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
+  \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
   \\
-T ::=   &\quad (\text{types}) \\
-  \mid\ &T_1 \rightarrow T_2 &\quad (\text{function}) \\
-  \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
+T ::=&   &\quad (\text{types}) \\
+  \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
+  \quad \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
   \\
-\Gamma ::=   &\quad (\text{contexts}) \\
-  \mid\ &\varnothing &\quad (\text{empty}) \\
-  \mid\ &\Gamma, x\mathord{:}T &\quad (\text{term variable binding}) \\
+\Gamma ::=&   &\quad (\text{contexts}) \\
+  \quad \mid\ &\varnothing &\quad (\text{empty}) \\
+  \quad \mid\ &\Gamma, x\mathord{:}T &\quad (\text{term variable binding}) \\
 \end{align*}
 ```
 
 - `<var>`, `<abs>`, `<true>`, `<false>`, `<if>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
+- `<tybool>` は boolean に変換され、 `<ty>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
 
 ### evaluation
 

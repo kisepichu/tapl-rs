@@ -22,12 +22,12 @@ p.54, p.61
 ```math
 \begin{align*}
 t ::=&   &\quad (\text{terms}) \\
-  \mid\ &x &\quad (\text{variable}) \\
-  \mid\ &\lambda.t &\quad (\text{abstraction}) \\
-  \mid\ &t_1\ t_2 &\quad (\text{application}) \\
+  \quad \mid\ &x &\quad (\text{variable}) \\
+  \quad \mid\ &\lambda.t &\quad (\text{abstraction}) \\
+  \quad \mid\ &t_1\ t_2 &\quad (\text{application}) \\
   \\
 v ::=&   &\quad (\text{values}) \\
-  \mid\ &\lambda.t &\quad (\text{abstraction value}) \\
+  \quad \mid\ &\lambda.t &\quad (\text{abstraction value}) \\
 \end{align*}
 ```
 

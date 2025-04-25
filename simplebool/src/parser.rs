@@ -12,42 +12,21 @@ use nom::{
 };
 
 // <term> ::= <app>
-// <app> ::= <atom> <app> | <atom>
-// <atom> ::= <encl> | <abs> | <var>
-// <encl> ::= "(" <term> ")"
-// <abs> ::= "\" <term>
-// <var> ::= number
-
-// new
-// <term> ::= <app>
 // <app>  ::= <atom> <app> | <atom>
 // <atom> ::= <encl> | <abs> | <var> | <true> | <false> | <if>
 // <encl> ::= "(" <term> ")"
 // <abs> ::= "\:" <ty> "." <term>
 // <if> ::= "if" <term> "then" <term> "else" <term>
-// <ty> ::= <tyatom> <tyarr> | <tyatom>
-// <tyatom> ::= <tyencl> | <tybool>
-// <tyarr> ::= "->" <ty>
-// <tyencl> ::= "(" <ty> ")"
-// <tybool> ::= "Bool"
 // <var> ::= number
 // <true> ::= "true"
 // <false> ::= "false"
 
-/// <false> ::= "false"
-fn parse_false(i: &str) -> IResult<&str, Term> {
-    map(tag("false"), |_| Term::False).parse(i)
-}
-
-/// <true> ::= "true"
-fn parse_true(i: &str) -> IResult<&str, Term> {
-    map(tag("true"), |_| Term::True).parse(i)
-}
-
-/// <var> ::= number
-fn parse_var(i: &str) -> IResult<&str, Term> {
-    map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
-}
+// <ty> ::= <tyarr>
+// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
+// <tyatom> ::= <tyencl> | <tybool>
+// <tyarrsub> ::= "->" <ty>
+// <tyencl> ::= "(" <ty> ")"
+// <tybool> ::= "Bool"
 
 /// <tyencl> ::= "(" <ty> ")"
 fn parse_tyencl(i: &str) -> IResult<&str, Type> {
@@ -63,16 +42,16 @@ fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     .parse(i)
 }
 
-/// <tyarr> ::= "->" <ty>
-fn parse_tyarr(i: &str) -> IResult<&str, Type> {
+/// <tyarrsub> ::= "->" <ty>
+fn parse_tyarrsub(i: &str) -> IResult<&str, Type> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
     preceded(multispace0, parse_ty_space).parse(i)
 }
 
-/// <ty> ::= <tyatom> <tyarr> | <tyatom>
-fn parse_ty(i: &str) -> IResult<&str, Type> {
+/// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
+fn parse_tyarr(i: &str) -> IResult<&str, Type> {
     let (i, tyatom) = preceded(multispace0, parse_tyatom).parse(i)?;
-    let (i, rest) = many0(parse_tyarr).parse(i)?;
+    let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
     let res = once(tyatom)
         .chain(rest)
@@ -85,10 +64,30 @@ fn parse_ty(i: &str) -> IResult<&str, Type> {
     Ok((i, res))
 }
 
+/// <ty> ::= <tyarr>
+fn parse_ty(i: &str) -> IResult<&str, Type> {
+    parse_tyarr(i)
+}
+
 fn parse_ty_space(i: &str) -> IResult<&str, Type> {
     let (i, t) = parse_ty(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, t))
+}
+
+/// <false> ::= "false"
+fn parse_false(i: &str) -> IResult<&str, Term> {
+    map(tag("false"), |_| Term::False).parse(i)
+}
+
+/// <true> ::= "true"
+fn parse_true(i: &str) -> IResult<&str, Term> {
+    map(tag("true"), |_| Term::True).parse(i)
+}
+
+/// <var> ::= number
+fn parse_var(i: &str) -> IResult<&str, Term> {
+    map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>

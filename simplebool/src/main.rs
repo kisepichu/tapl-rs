@@ -1,6 +1,7 @@
 mod eval;
 mod parser;
 mod syntax;
+mod typing;
 
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
