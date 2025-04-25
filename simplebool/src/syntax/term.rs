@@ -31,8 +31,8 @@ impl fmt::Display for Term {
                         format!("{} {}", p(t1, true, false), p(t2, has_arg_after, true))
                     }
                 }
-                Term::True => format!("true"),
-                Term::False => format!("false"),
+                Term::True => "true".to_string(),
+                Term::False => "false".to_string(),
                 Term::If(t1, t2, t3) => format!(
                     "if {} then {} else {}",
                     p(t1, true, false),

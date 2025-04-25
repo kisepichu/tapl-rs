@@ -1,4 +1,4 @@
-use crate::syntax::{term::Term, ty};
+use crate::syntax::term::Term;
 
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
     fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {

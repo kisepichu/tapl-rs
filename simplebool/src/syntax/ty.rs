@@ -17,7 +17,7 @@ impl fmt::Display for Type {
                         format!("{} {}", p(t1, false), p(t2, false))
                     }
                 }
-                Type::Bool => format!("Bool"),
+                Type::Bool => "Bool".to_string(),
             }
         }
         write!(f, "{}", p(self, false))
