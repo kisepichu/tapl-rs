@@ -1,6 +1,6 @@
 [workspace]
 
-members = [
+members = [ "simplebool",
     "untyped",
 ]
 resolver = "3"

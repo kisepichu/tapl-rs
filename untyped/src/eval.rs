@@ -1,4 +1,4 @@
-use crate::term::Term;
+use crate::syntax::Term;
 
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
     fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {
@@ -45,15 +45,11 @@ fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
     term_shift(&term_subst(0, &term_shift(s, 1)?, t)?, -1)
 }
 
-fn isval(t: &Term) -> bool {
-    matches!(t, Term::Abs(_))
-}
-
 fn eval1(t: &Term) -> Result<Term, String> {
     match t {
         Term::App(t1, t2) => Ok(match (&**t1, &**t2) {
-            (Term::Abs(t12), v2) if isval(v2) => term_subst_top(v2, t12)?,
-            (v1, t2) if isval(v1) => Term::App(Box::new(v1.clone()), Box::new(eval1(t2)?)),
+            (Term::Abs(t12), v2) if v2.isval() => term_subst_top(v2, t12)?,
+            (v1, t2) if v1.isval() => Term::App(Box::new(v1.clone()), Box::new(eval1(t2)?)),
             _ => Term::App(Box::new(eval1(t1)?), t2.clone()),
         }),
         _ => Err("eval1: no rule applies".to_string()),
@@ -97,22 +93,19 @@ mod tests {
         let fls = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(0)))));
 
         {
-            // fls id == id
+            // (\t.\f.f) id == id
             let t = Term::App(Box::new(fls.clone()), Box::new(id.clone()));
             assert_eq!(eval(&t).unwrap(), id);
         }
 
         // and = \b.\c.b c fls
-        let and = {
-            let fls_ctx2 = Term::Abs(Box::new(Term::Abs(Box::new(Term::Var(0)))));
-            Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
-                Box::new(Term::App(
-                    Box::new(Term::Var(1)), // b
-                    Box::new(Term::Var(0)), // c
-                )),
-                Box::new(fls_ctx2.clone()),
-            )))))
-        };
+        let and = Term::Abs(Box::new(Term::Abs(Box::new(Term::App(
+            Box::new(Term::App(
+                Box::new(Term::Var(1)), // b
+                Box::new(Term::Var(0)), // c
+            )),
+            Box::new(fls.clone()),
+        )))));
 
         {
             // and fls fls == fls
@@ -192,22 +185,5 @@ mod tests {
                 assert_eq!(eval(&t2).unwrap(), fls);
             }
         }
-
-        // plus = \mnsz.m s (n s z)
-        let _plus = Term::Abs(Box::new(Term::Abs(Box::new(Term::Abs(Box::new(
-            Term::Abs(Box::new(Term::App(
-                Box::new(Term::App(
-                    Box::new(Term::Var(3)), // m
-                    Box::new(Term::Var(1)), // s
-                )),
-                Box::new(Term::App(
-                    Box::new(Term::App(
-                        Box::new(Term::Var(2)), // n
-                        Box::new(Term::Var(1)), // s
-                    )),
-                    Box::new(Term::Var(0)), // z
-                )),
-            ))),
-        ))))));
     }
 }
