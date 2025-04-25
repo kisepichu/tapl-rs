@@ -8,7 +8,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Var(x) => match ctx.get(*x) {
             Some(ty) => Ok(ty.clone()),
             None => Err(format!(
-                "type checked failed: {}\n: unbound variable {}",
+                "type check failed: {}\n: unbound variable {}",
                 t, x
             )),
         },
