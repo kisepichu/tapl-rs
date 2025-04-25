@@ -19,7 +19,7 @@ p.54, p.61
 
 #### Abstract syntax
 
-$$
+```math
 \begin{align*}
 t ::=&   \tag{terms} \\
   \mid\ &x \tag{variable} \\
@@ -29,15 +29,15 @@ t ::=&   \tag{terms} \\
 v ::=&   \tag{values} \\
   \mid\ &\lambda.t \tag{abstraction value} \\
 \end{align*}
-$$
+```
 
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
-- `<abs>` は、 abstraction に変換される。 
+- `<abs>` は、 abstraction に変換される。
 - `<var>` は、 variable に変換される。
 
 ### evaluation
 
-`fn eval1` in [`untyped/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/eval.rs) 
+`fn eval1` in [`untyped/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/eval.rs)
 
 $$
 \begin{align*}
@@ -56,6 +56,5 @@ $$
 ->  \(\0)0
 ```
 
-de Bruijn index は何個外側のλ抽象の変数かを表し、これは `(λx.λy.x y)λx.x -> λy.(λx.x)y` に対応。
+de Bruijn index は何個外側の λ 抽象の変数かを表し、これは `(λx.λy.x y)λx.x -> λy.(λx.x)y` に対応。
 値呼び(call by value)の評価規則で、最後の y は値でないため、これ以上簡約(E-APPABS 適用)できなくなっている。 p.42
-

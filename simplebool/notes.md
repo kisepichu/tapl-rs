@@ -29,7 +29,7 @@ WIP
 
 #### Abstract syntax
 
-$$
+```math
 \begin{align*}
 t ::=&   \tag{terms} \\
   \mid\ &x \tag{variable} \\
@@ -52,7 +52,7 @@ T ::=   \tag{types} \\
   \mid\ &\varnothing \tag{empty} \\
   \mid\ &\Gamma, x\mathord{:}T \tag{term variable binding} \\
 \end{align*}
-$$
+```
 
 - `<var>`, `<abs>`, `<true>`, `<false>`, `<if>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
@@ -61,9 +61,9 @@ $$
 
 `fn eval1` in [`simplebool/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/eval.rs)
 
-$$
+```math
 \begin{align*}
-\frac{}{(\lambda:T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [`0 \mapsto\ \uparrow^{1} v_2`]t_{12}} \quad &\text{(E-APPABS)} \\
+\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [`0 \mapsto\ \uparrow^{1} v_2`]t_{12}} \quad &\text{(E-APPABS)} \\
 \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
@@ -75,6 +75,24 @@ $$
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad &\text{(E-IF)} \\
 \end{align*}
-$$
+```
+
+### typing
+
+```math
+\begin{align*}
+\frac{x\mathord{:}T \in \Gamma}{\Gamma \vdash x \mathord{:} T} \quad &\text{(T-VAR)} \\
+\\
+\frac{\Gamma, x\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad &\text{(T-ABS)} \\
+\\
+\frac{{\Gamma \vdash t_1 \mathord{:} T_{11} \rightarrow T_{12}} \quad {\Gamma \vdash t_2 \mathord{:} T_{21}}}{\Gamma \vdash t_1\ t_2 \mathord{:} T_{12} \rightarrow T_{21}} \quad &\text{(T-APP)} \\
+\\
+\frac{}{\Gamma \vdash \mathrm{true} : \mathrm{Bool}} \quad &\text{(T-TRUE)} \\
+\\
+\frac{}{\Gamma \vdash \mathrm{false} : \mathrm{Bool}} \quad &\text{(T-FALSE)} \\
+\\
+\frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad &\text{(T-IF)} \\
+\end{align*}
+```
 
 ### examples
