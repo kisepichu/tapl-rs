@@ -4,7 +4,7 @@ p.54, p.61
 
 ### Syntax
 
-`fn parse` in [`untyped/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/parser.rs), `enum Term` in [`untyped/src/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/term.rs)
+`fn parse` in [`untyped/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/parser.rs), `enum Term` in [`untyped/src/syntax.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/syntax.rs)
 
 #### Concrete syntax
 

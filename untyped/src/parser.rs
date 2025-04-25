@@ -8,11 +8,12 @@ use nom::{
 };
 
 // <term> ::= <app>
-/// <app> ::= <atom> <app> | <atom>
-/// <atom> ::= <encl> | <abs> | <var>
+// <app> ::= <atom> <app> | <atom>
+// <atom> ::= <encl> | <abs> | <var>
 // <encl> ::= "(" <term> ")"
 // <abs> ::= "\" <term>
 // <var> ::= number
+
 /// <var> ::= number
 fn parse_var(i: &str) -> IResult<&str, Term> {
     map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)

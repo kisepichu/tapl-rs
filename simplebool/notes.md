@@ -17,8 +17,11 @@ WIP
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
-<ty> ::= "Bool" | <ty> "->" <ty> | <tyencl>
+<ty> ::= <tyatom> <tyarr> | <tyatom>
+<tyatom> ::= <tyencl> | <tybool>
+<tyarr> ::= "->" <ty>
 <tyencl> ::= "(" <ty> ")"
+<tybool> ::= "Bool"
 <var> ::= number
 <true> ::= "true"
 <false> ::= "false"

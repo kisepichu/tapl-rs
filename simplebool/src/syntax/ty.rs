@@ -12,9 +12,9 @@ impl fmt::Display for Type {
             match ty {
                 Type::Arr(t1, t2) => {
                     if is_left_arr {
-                        format!("({} {})", p(t1, false), p(t2, false))
+                        format!("({}->{})", p(t1, false), p(t2, false))
                     } else {
-                        format!("{} {}", p(t1, false), p(t2, false))
+                        format!("{}->{}", p(t1, false), p(t2, false))
                     }
                 }
                 Type::Bool => "Bool".to_string(),
