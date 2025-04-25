@@ -21,13 +21,13 @@ p.54, p.61
 
 ```math
 \begin{align*}
-t ::=&   \tag{terms} \\
-  \mid\ &x \tag{variable} \\
-  \mid\ &\lambda.t \tag{abstraction} \\
-  \mid\ &t_1\ t_2 \tag{application} \\
+t ::=&   &\quad (\text{terms}) \\
+  \mid\ &x &\quad (\text{variable}) \\
+  \mid\ &\lambda.t &\quad (\text{abstraction}) \\
+  \mid\ &t_1\ t_2 &\quad (\text{application}) \\
   \\
-v ::=&   \tag{values} \\
-  \mid\ &\lambda.t \tag{abstraction value} \\
+v ::=&   &\quad (\text{values}) \\
+  \mid\ &\lambda.t &\quad (\text{abstraction value}) \\
 \end{align*}
 ```
 

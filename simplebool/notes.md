@@ -31,26 +31,26 @@ WIP
 
 ```math
 \begin{align*}
-t ::=&   \tag{terms} \\
-  \mid\ &x \tag{variable} \\
-  \mid\ &\lambda\mathord{:}T.t_2  \tag{abstraction} \\
-  \mid\ &t_1\ t_2 \tag{application} \\
-  \mid\ &\mathrm{true} \tag{constant true} \\
-  \mid\ &\mathrm{false} \tag{constant false} \\
-  \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 \tag{if} \\
+t ::=&   &\quad (\text{terms}) \\
+  \mid\ &x &\quad (\text{variable}) \\
+  \mid\ &\lambda\mathord{:}T.t_2  &\quad (\text{abstraction}) \\
+  \mid\ &t_1\ t_2 &\quad (\text{application}) \\
+  \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
+  \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
+  \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \\
-v ::=&   \tag{values} \\
-  \mid\ &\lambda\mathord{:}T.t_2 \tag{abstraction value} \\
-  \mid\ &\mathrm{true} \tag{true} \\
-  \mid\ &\mathrm{false} \tag{false} \\
+v ::=&   &\quad (\text{values}) \\
+  \mid\ &\lambda\mathord{:}T.t_2 &\quad (\text{abstraction value}) \\
+  \mid\ &\mathrm{true} &\quad (\text{true}) \\
+  \mid\ &\mathrm{false} &\quad (\text{false}) \\
   \\
-T ::=   \tag{types} \\
-  \mid\ &T_1 \rightarrow T_2 \tag{function} \\
-  \mid\ &\mathrm{Bool} \tag{boolean} \\
+T ::=   &\quad (\text{types}) \\
+  \mid\ &T_1 \rightarrow T_2 &\quad (\text{function}) \\
+  \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
   \\
-\Gamma ::=   \tag{contexts} \\
-  \mid\ &\varnothing \tag{empty} \\
-  \mid\ &\Gamma, x\mathord{:}T \tag{term variable binding} \\
+\Gamma ::=   &\quad (\text{contexts}) \\
+  \mid\ &\varnothing &\quad (\text{empty}) \\
+  \mid\ &\Gamma, x\mathord{:}T &\quad (\text{term variable binding}) \\
 \end{align*}
 ```
 
