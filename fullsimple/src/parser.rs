@@ -158,7 +158,10 @@ fn parse_seq(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_app.parse(i)?;
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
     let t = rest.into_iter().fold(first, |acc, t| {
-        Term::App(Box::new(Term::Abs(Type::Unit, Box::new(t))), Box::new(acc))
+        Term::App(
+            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))), // plus shift does not fail
+            Box::new(acc),
+        )
     });
     Ok((i, t))
 }
