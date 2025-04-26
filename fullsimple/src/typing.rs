@@ -71,6 +71,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 #[case(r"unit", Some(Type::Unit))]
 #[case(r"unit;0", None)]
 #[case(r"(\:Bool. ( unit ; 0 ) ) true", Some(Type::Bool))]
+#[case(r"(\:Bool.(unit;unit;0))true", Some(Type::Bool))]
 #[case(r"true", Some(Type::Bool))]
 #[case(r"false", Some(Type::Bool))]
 #[case(
