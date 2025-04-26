@@ -69,8 +69,6 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 $$
 
-- $\lambda\_\mathord{:}T.t_2$ において、 $\_$ はある変数であり $\_ \notin \mathrm{FV}(t_2)$
-
 ### parsing
 
 - `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
@@ -84,7 +82,16 @@ $$
 $$
 \begin{align*}
   \quad & \quad &\quad \text{(derived forms)} \\
-t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t_1 &\ (\text{sequence})
+t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 &\ (\text{sequence})
+\end{align*}
+$$
+
+補足: 本文では sequence は以下のようになっているが、シフトすることで名無し項で同じことをする実装にした。未証明
+
+$$
+\begin{align*}
+t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda x\mathord{:}\mathrm{Unit}.t_2) t_1  \\
+  & \quad \text{where} \quad x \notin \mathrm{FV}(t_2) &\ (\text{sequence})
 \end{align*}
 $$
 
