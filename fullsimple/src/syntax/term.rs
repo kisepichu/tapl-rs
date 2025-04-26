@@ -7,6 +7,7 @@ pub enum Term {
     Var(usize),
     Abs(Type, Box<Term>),
     App(Box<Term>, Box<Term>),
+    Unit,
     True,
     False,
     If(Box<Term>, Box<Term>, Box<Term>),
@@ -31,6 +32,7 @@ impl fmt::Display for Term {
                         format!("{} {}", p(t1, true, false), p(t2, has_arg_after, true))
                     }
                 }
+                Term::Unit => "unit".to_string(),
                 Term::True => "true".to_string(),
                 Term::False => "false".to_string(),
                 Term::If(t1, t2, t3) => format!(

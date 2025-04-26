@@ -43,6 +43,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 )),
             }
         }
+        Term::Unit => Ok(Type::Unit),
         Term::True => Ok(Type::Bool),
         Term::False => Ok(Type::Bool),
         Term::If(t1, t2, t3) => {
@@ -67,6 +68,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 }
 
 #[rstest]
+#[case(r"unit", Some(Type::Unit))]
 #[case(r"true", Some(Type::Bool))]
 #[case(r"false", Some(Type::Bool))]
 #[case(

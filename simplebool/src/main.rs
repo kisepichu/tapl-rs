@@ -44,14 +44,14 @@ fn main() -> Result<()> {
                 let ty = match type_of(&ctx, &t) {
                     Ok(ty) => ty,
                     Err(e) => {
-                        println!("input: {}", t);
+                        println!("input= {}", t);
                         println!("{}", e);
                         continue;
                     }
                 };
                 // println!("{:?}", ty);
 
-                println!("input: {}: {}", t, ty);
+                println!("input= {}: {}", t, ty);
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                println!("   ->* {}", t);
+                println!("   ->* {}\n", t);
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

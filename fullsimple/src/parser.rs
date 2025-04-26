@@ -13,33 +13,39 @@ use nom::{
 
 // <term> ::= <app>
 // <app>  ::= <atom> <app> | <atom>
-// <atom> ::= <encl> | <abs> | <var> | <true> | <false> | <if>
+// <atom> ::= <encl> | <abs> | <var> | <unit> | <true> | <false> | <if>
 // <encl> ::= "(" <term> ")"
 // <abs> ::= "\:" <ty> "." <term>
 // <if> ::= "if" <term> "then" <term> "else" <term>
 // <var> ::= number
+// <unit> ::= "unit"
 // <true> ::= "true"
 // <false> ::= "false"
 
 // <ty> ::= <tyarr>
 // <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 // <tyarrsub> ::= "->" <ty>
-// <tyatom> ::= <tyencl> | <tybool>
+// <tyatom> ::= <tyencl> | <tyunit> | <tybool>
 // <tyencl> ::= "(" <ty> ")"
+// <tyunit> ::= "Unit"
 // <tybool> ::= "Bool"
+
+/// <tyatom> ::= <tyencl> | <tyunit> | <tybool>
+fn parse_tyatom(i: &str) -> IResult<&str, Type> {
+    preceded(
+        multispace0,
+        alt((
+            map(tag("Bool"), |_| Type::Bool),
+            map(tag("Unit"), |_| Type::Unit),
+            parse_tyencl,
+        )),
+    )
+    .parse(i)
+}
 
 /// <tyencl> ::= "(" <ty> ")"
 fn parse_tyencl(i: &str) -> IResult<&str, Type> {
     delimited(char('('), parse_ty_space, char(')')).parse(i)
-}
-
-/// <tyatom> ::= <tyencl> | <tybool>
-fn parse_tyatom(i: &str) -> IResult<&str, Type> {
-    preceded(
-        multispace0,
-        alt((map(tag("Bool"), |_| Type::Bool), parse_tyencl)),
-    )
-    .parse(i)
 }
 
 /// <tyarrsub> ::= "->" <ty>
@@ -85,6 +91,11 @@ fn parse_true(i: &str) -> IResult<&str, Term> {
     map(tag("true"), |_| Term::True).parse(i)
 }
 
+// <unit> ::= "unit"
+fn parse_unit(i: &str) -> IResult<&str, Term> {
+    map(tag("unit"), |_| Term::Unit).parse(i)
+}
+
 /// <var> ::= number
 fn parse_var(i: &str) -> IResult<&str, Term> {
     map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
@@ -114,7 +125,7 @@ fn parse_encl(i: &str) -> IResult<&str, Term> {
     delimited(char('('), parse_term_space, char(')')).parse(i)
 }
 
-/// <atom> ::= <var> | <abs> | <encl> | <true> | <false> | <if>
+/// <atom> ::= <var> | <abs> | <encl> | <unit> | <true> | <false> | <if>
 fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
@@ -122,6 +133,7 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
             parse_if,
             parse_false,
             parse_true,
+            parse_unit,
             parse_encl,
             parse_abs,
             parse_var,
@@ -164,7 +176,7 @@ use rstest::rstest;
 
 #[rstest]
 #[case("1", Some(Term::Var(1)))]
-#[case(r"\:Bool.0 ", Some(Term::Abs(Type::Bool, Box::new(Term::Var(0)))))]
+#[case(r"\:Unit.unit ", Some(Term::Abs(Type::Unit, Box::new(Term::Unit))))]
 #[case(
     r"   ( \ : Bool . 0 )   ",
     Some(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
