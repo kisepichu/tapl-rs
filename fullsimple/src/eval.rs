@@ -211,9 +211,33 @@ mod tests {
         }
 
         {
-            // unit -> unit
+            // unit ->* unit
             let t = Term::Unit;
             assert_eq!(eval(&t).unwrap(), Term::Unit);
+        }
+
+        {
+            // (\:Bool.unit) false; unit; \:Unit.true ->* \:Unit.true
+            let t = Term::App(
+                Box::new(Term::Abs(
+                    Type::Unit,
+                    Box::new(Term::App(
+                        Box::new(Term::Abs(
+                            Type::Unit,
+                            Box::new(Term::Abs(Type::Unit, Box::new(Term::True))),
+                        )),
+                        Box::new(Term::Unit),
+                    )),
+                )),
+                Box::new(Term::App(
+                    Box::new(Term::Abs(Type::Bool, Box::new(Term::Unit))),
+                    Box::new(Term::False),
+                )),
+            );
+            assert_eq!(
+                eval(&t).unwrap(),
+                Term::Abs(Type::Unit, Box::new(Term::True))
+            );
         }
     }
 }

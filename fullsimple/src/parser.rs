@@ -11,7 +11,8 @@ use nom::{
     sequence::{delimited, preceded},
 };
 
-// <term> ::= <app>
+// <term> ::= <seq>
+// <seq> ::= <app> ";" <seq> | <app>
 // <app>  ::= <atom> <app> | <atom>
 // <atom> ::= <encl> | <abs> | <var> | <unit> | <true> | <false> | <if>
 // <encl> ::= "(" <term> ")"
@@ -152,9 +153,19 @@ fn parse_app(i: &str) -> IResult<&str, Term> {
     Ok((i, t))
 }
 
-/// <term> ::= <app>
+// <seq> ::= <app> ";" <seq> | <app>
+fn parse_seq(i: &str) -> IResult<&str, Term> {
+    let (i, first) = parse_app.parse(i)?;
+    let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
+    let t = rest.into_iter().fold(first, |acc, t| {
+        Term::App(Box::new(Term::Abs(Type::Unit, Box::new(t))), Box::new(acc))
+    });
+    Ok((i, t))
+}
+
+// <term> ::= <seq>
 fn parse_term(i: &str) -> IResult<&str, Term> {
-    preceded(multispace0, parse_app).parse(i)
+    preceded(multispace0, parse_seq).parse(i)
 }
 
 fn parse_term_space(i: &str) -> IResult<&str, Term> {
@@ -168,7 +179,7 @@ pub fn parse(input: &str) -> Result<Term, String> {
     if rest.is_empty() {
         Ok(t)
     } else {
-        Err("input not fully consumed".to_string())
+        Err("parse error: input not fully consumed".to_string())
     }
 }
 
@@ -177,6 +188,32 @@ use rstest::rstest;
 #[rstest]
 #[case("1", Some(Term::Var(1)))]
 #[case(r"\:Unit.unit ", Some(Term::Abs(Type::Unit, Box::new(Term::Unit))))]
+#[case(
+    r" unit ; true ",
+    Some(Term::App(
+        Box::new(Term::Abs(Type::Unit, Box::new(Term::True))),
+        Box::new(Term::Unit)
+    ))
+)]
+#[case(
+    r"(\:Bool.unit) false; unit; \:Unit.true",
+    Some(Term::App(
+        Box::new(Term::Abs(
+            Type::Unit,
+            Box::new(Term::App(
+                Box::new(Term::Abs(
+                    Type::Unit,
+                    Box::new(Term::Abs(Type::Unit, Box::new(Term::True)))
+                )),
+                Box::new(Term::Unit)
+            ))
+        )),
+        Box::new(Term::App(
+            Box::new(Term::Abs(Type::Bool, Box::new(Term::Unit))),
+            Box::new(Term::False)
+        ))
+    ))
+)]
 #[case(
     r"   ( \ : Bool . 0 )   ",
     Some(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
