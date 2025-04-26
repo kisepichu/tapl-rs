@@ -49,6 +49,9 @@ impl fmt::Display for Term {
 
 impl Term {
     pub fn isval(&self) -> bool {
-        matches!(self, Term::Abs(_, _) | Term::True | Term::False)
+        matches!(
+            self,
+            Term::Abs(_, _) | Term::Unit | Term::True | Term::False
+        )
     }
 }

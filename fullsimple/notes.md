@@ -15,7 +15,8 @@ $ cargo run --bin fullsimple
 ### Concrete syntax
 
 ```bnf
-<term> ::= <app>
+<term> ::= <seq>
+<seq> ::= <app> ";" <seq> | <app>
 <app>  ::= <atom> <app> | <atom>
 <atom> ::= <encl> | <abs> | <var> | <unit> | <true> | <false> | <if>
 <encl> ::= "(" <term> ")"
@@ -37,7 +38,7 @@ $ cargo run --bin fullsimple
 
 ### Abstract syntax
 
-```math
+$$
 \begin{align*}
 t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &x &\quad (\text{variable}) \\
@@ -65,11 +66,8 @@ T ::=&   &\quad (\text{types}) \\
 \Gamma ::=&   &\quad (\text{contexts}) \\
   \quad \mid\ &\varnothing &\quad (\text{empty}) \\
   \quad \mid\ &\Gamma, x\mathord{:}T &\quad (\text{term variable binding}) \\
-  \\
-  \quad & \quad &\quad \text{(derived forms)} \\
-t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t_1
 \end{align*}
-```
+$$
 
 - $\lambda\_\mathord{:}T.t_2$ において、 $\_$ はある変数であり $\_ \notin \mathrm{FV}(t_2)$
 
@@ -79,11 +77,22 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
 
+糖衣構文(syntactic sugar, 派生形式, derived forms)
+
+- `<seq>` は、 `<app>` と ";" の列が右結合で脱糖衣される。
+
+$$
+\begin{align*}
+  \quad & \quad &\quad \text{(derived forms)} \\
+t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t_1 &\ (\text{sequence})
+\end{align*}
+$$
+
 ## evaluation
 
 `fn eval1` in [`fullsimple/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/eval.rs)
 
-```math
+$$
 \begin{align*}
 \frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [`0 \mapsto\ \uparrow^{1} v_2`]t_{12}} \quad &\text{(E-APPABS)} \\
 \\
@@ -97,13 +106,13 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad &\text{(E-IF)} \\
 \end{align*}
-```
+$$
 
 ## typing
 
 `fn type_of` in [`fullsimple/src/typing.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/typing.rs)
 
-```math
+$$
 \begin{align*}
 \frac{x\mathord{:}T \in \Gamma}{\Gamma \vdash x \mathord{:} T} \quad &\text{(T-VAR)} \\
 \\
@@ -111,12 +120,14 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t
 \\
 \frac{{\Gamma \vdash t_1 \mathord{:} T_{11} \rightarrow T_{12}} \quad {\Gamma \vdash t_2 \mathord{:} T_{21}}}{\Gamma \vdash t_1\ t_2 \mathord{:} T_{12} \rightarrow T_{21}} \quad &\text{(T-APP)} \\
 \\
+\frac{}{\Gamma \vdash \mathrm{unit} : \mathrm{Unit}} \quad &\text{(T-UNIT)} \\
+\\
 \frac{}{\Gamma \vdash \mathrm{true} : \mathrm{Bool}} \quad &\text{(T-TRUE)} \\
 \\
 \frac{}{\Gamma \vdash \mathrm{false} : \mathrm{Bool}} \quad &\text{(T-FALSE)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad &\text{(T-IF)} \\
 \end{align*}
-```
+$$
 
 ### examples
