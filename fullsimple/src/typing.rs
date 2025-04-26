@@ -5,11 +5,11 @@ use crate::syntax::{context::Context, term::Term, r#type::Type};
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
-        Term::Var(x) => match ctx.get(*x) {
+        Term::Var(xn) => match ctx.get(*xn) {
             Some(ty) => Ok(ty.clone()),
             None => Err(format!(
                 "type check failed: {}\n: unbound variable {}",
-                t, x
+                t, xn
             )),
         },
         Term::Abs(ty, t2) => {
@@ -63,6 +63,9 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                     t, t1, ty1
                 ))
             }
+        }
+        Term::Let(t1, t2) => {
+            todo!()
         }
     }
 }

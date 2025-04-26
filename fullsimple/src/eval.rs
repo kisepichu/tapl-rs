@@ -1,3 +1,5 @@
+use num::FromPrimitive;
+
 use crate::syntax::term::Term;
 
 impl Term {
@@ -6,7 +8,8 @@ impl Term {
             match t {
                 Term::Var(x) => {
                     if *x >= c {
-                        let s: usize = (*x as isize + d).try_into().unwrap();
+                        let s: usize =
+                            usize::from_isize(*x as isize + d).ok_or("minus after shift")?;
                         Ok(Term::Var(s))
                     } else {
                         Ok(Term::Var(*x))
@@ -25,17 +28,21 @@ impl Term {
                     Box::new(walk(t2, d, c)?),
                     Box::new(walk(t3, d, c)?),
                 )),
+                Term::Let(t1, t2) => Ok(Term::Let(
+                    Box::new(walk(t1, d, c)?),
+                    Box::new(walk(t2, d, c)?),
+                )),
             }
         }
         walk(self, d, 0)
     }
 }
 
-fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
-    fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
+fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
+    fn walk(j: usize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
             Term::Var(k) => {
-                if Some(*k) == (j + c).try_into().ok() {
+                if Some(*k) == (j as isize + c).try_into().ok() {
                     s.shift(c)
                 } else {
                     Ok(Term::Var(*k))
@@ -53,6 +60,10 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c, t2)?),
                 Box::new(walk(j, s, c, t3)?),
+            )),
+            Term::Let(t1, t2) => Ok(Term::Let(
+                Box::new(walk(j, s, c, t1)?),
+                Box::new(walk(j, s, c, t2)?),
             )),
         }
     }
@@ -75,6 +86,10 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (Term::False, _, t3) => t3.clone(),
             _ => Term::If(Box::new(eval1(t1)?), t2.clone(), t3.clone()),
         }),
+        Term::Let(t1, t2) => match (&**t1, &**t2) {
+            (v1, t2) if v1.isval() => term_subst(0, t2, v1),
+            _ => Ok(t.clone()),
+        },
         _ => Err("eval1: no rule applies".to_string()),
     }
 }

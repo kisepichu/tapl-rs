@@ -18,12 +18,12 @@ $ cargo run --bin fullsimple
 <term> ::= <seq>
 <seq> ::= <app> ";" <seq> | <app>
 <app>  ::= <atom> <app> | <atom>
-<atom> ::= <encl> | <abs> | <var> | <unit> | <true> | <false> | <if> | <let>
+<atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
 <let> ::= "let" string "=" <term> "in" <term>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
-<var> ::= number
+<var> ::= number | string
 <unit> ::= "unit"
 <true> ::= "true"
 <false> ::= "false"
@@ -45,7 +45,7 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &x &\quad (\text{variable}) \\
   \quad \mid\ &\lambda\mathord{:}T.t_2  &\quad (\text{abstraction}) \\
   \quad \mid\ &t_1\ t_2 &\quad (\text{application}) \\
-  \quad \mid\ &\mathrm{unit} &\quad (\text{unit}) \\
+  \quad \mid\ &\mathrm{unit} &\quad (\text{constant unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
@@ -61,7 +61,7 @@ v ::=&   &\quad (\text{values}) \\
 
 T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
-  \quad \mid\ &\mathrm{Unit} &\quad (\text{unit}) \\
+  \quad \mid\ &\mathrm{Unit} &\quad (\text{unit type}) \\
   \quad \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
   \\
 
@@ -73,13 +73,11 @@ T ::=&   &\quad (\text{types}) \\
 
 ### parsing
 
-- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
+- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>`, `<let>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
-
-糖衣構文(syntactic sugar, 派生形式, derived forms)
-
-- `<seq>` は、 `<app>` と ";" の列が左結合で脱糖衣される。
+- 以下の糖衣構文(syntactic sugar)を含む。
+  - `<seq>` は、 `<app>` と ";" の列が左結合で脱糖衣される。
 
 ```math
 \begin{align*}
@@ -88,7 +86,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^
 \end{align*}
 ```
 
-補足: 本文では sequence は以下のようになっているが、シフトすることで名無し項で同じことをする実装にした。未証明
+###### 補足: 本文では sequence は以下のようになっているが、シフトすることで名無し項で同じことをする実装にした。未証明
 
 ```math
 \begin{align*}
