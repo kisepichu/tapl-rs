@@ -17,19 +17,21 @@ $ cargo run --bin fullsimple
 ```bnf
 <term> ::= <app>
 <app>  ::= <atom> <app> | <atom>
-<atom> ::= <encl> | <abs> | <var> | <true> | <false> | <if>
+<atom> ::= <encl> | <abs> | <var> | <unit> | <true> | <false> | <if>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
 <var> ::= number
+<unit> ::= "unit"
 <true> ::= "true"
 <false> ::= "false"
 
 <ty> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 <tyarrsub> ::= "->" <ty>
-<tyatom> ::= <tyencl> | <tybool>
+<tyatom> ::= <tyencl> | <tyunit> | <tybool>
 <tyencl> ::= "(" <ty> ")"
+<tyunit> ::= "Unit"
 <tybool> ::= "Bool"
 ```
 
@@ -73,7 +75,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t
 
 ### parsing
 
-- `<var>`, `<abs>`, `<true>`, `<false>`, `<if>` が、それぞれ対応する term に変換される。
+- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
 

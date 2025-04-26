@@ -16,6 +16,7 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
                 Box::new(walk(t1, d, c)?),
                 Box::new(walk(t2, d, c)?),
             )),
+            Term::Unit => Ok(Term::Unit),
             Term::True => Ok(Term::True),
             Term::False => Ok(Term::False),
             Term::If(t1, t2, t3) => Ok(Term::If(
@@ -43,6 +44,7 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c, t2)?),
             )),
+            Term::Unit => Ok(Term::Unit),
             Term::True => Ok(Term::True),
             Term::False => Ok(Term::False),
             Term::If(t1, t2, t3) => Ok(Term::If(
@@ -206,6 +208,12 @@ mod tests {
             // churchbool false == fls
             let t = Term::App(Box::new(churchbool.clone()), Box::new(Term::False));
             assert_eq!(eval(&t).unwrap(), fls);
+        }
+
+        {
+            // unit -> unit
+            let t = Term::Unit;
+            assert_eq!(eval(&t).unwrap(), Term::Unit);
         }
     }
 }
