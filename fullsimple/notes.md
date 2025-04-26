@@ -1,14 +1,16 @@
-# Simply typed lambda calculus($\lambda_{\rightarrow}$) + Bool
+# Extensions of Simply Typed Lambda Calculus
+
+WIP
 
 ```
-$ cargo run --bin simplebool
+$ cargo run --bin fullsimple
 ```
 
-Figure 9-1(p.78), Figure 8-1(p.70), Figure 3-1(p.25)
+11.1(p.89)
 
 ## Syntax
 
-`fn parse` in [`simplebool/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/parser.rs), `enum Term` in [`simplebool/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/syntax/term.rs)
+`fn parse` in [`fullsimple/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/parser.rs), `enum Term` in [`fullsimple/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/syntax/term.rs)
 
 ### Concrete syntax
 
@@ -39,24 +41,35 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &x &\quad (\text{variable}) \\
   \quad \mid\ &\lambda\mathord{:}T.t_2  &\quad (\text{abstraction}) \\
   \quad \mid\ &t_1\ t_2 &\quad (\text{application}) \\
+  \quad \mid\ &\mathrm{unit} &\quad (\text{unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \\
+
 v ::=&   &\quad (\text{values}) \\
   \quad \mid\ &\lambda\mathord{:}T.t_2 &\quad (\text{abstraction value}) \\
+  \quad \mid\ &\mathrm{unit} &\quad (\text{unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
   \\
+
 T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
+  \quad \mid\ &\mathrm{Unit} &\quad (\text{unit}) \\
   \quad \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
   \\
+
 \Gamma ::=&   &\quad (\text{contexts}) \\
   \quad \mid\ &\varnothing &\quad (\text{empty}) \\
   \quad \mid\ &\Gamma, x\mathord{:}T &\quad (\text{term variable binding}) \\
+  \\
+  \quad & \quad &\quad \text{(derived forms)} \\
+t_1; t_2 \stackrel{\mathrm{def}}{=} &\ (\lambda\_\mathord{:}\mathrm{Unit}.t_2) t_1
 \end{align*}
 ```
+
+- $\lambda\_\mathord{:}T.t_2$ において、 $\_$ はある変数であり $\_ \notin \mathrm{FV}(t_2)$
 
 ### parsing
 
@@ -66,7 +79,7 @@ T ::=&   &\quad (\text{types}) \\
 
 ## evaluation
 
-`fn eval1` in [`simplebool/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/eval.rs)
+`fn eval1` in [`fullsimple/src/eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/eval.rs)
 
 ```math
 \begin{align*}
@@ -86,7 +99,7 @@ T ::=&   &\quad (\text{types}) \\
 
 ## typing
 
-`fn type_of` in [`simplebool/src/typing.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/typing.rs)
+`fn type_of` in [`fullsimple/src/typing.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/typing.rs)
 
 ```math
 \begin{align*}
@@ -104,19 +117,4 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-型チェック関数は、逆転補題を写すように実装する。 10.3(p.86), Lemma 9.3.1(p.79)
-
 ### examples
-
-```
-$ cargo run --bin simplebool
-> (\:Bool.if 0 then \:Bool.\:Bool.1 else \:Bool.\:Bool.0) true
-input: (\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true: Bool->Bool->Bool
-   ->* \:Bool.\:Bool.1
-
-> (\:Bool->Bool->Bool.0 true false) \:Bool.\:Bool.0
-input: (\:Bool->Bool->Bool.0 true false) \:Bool.\:Bool.0: Bool
-   ->* false
-
->
-```

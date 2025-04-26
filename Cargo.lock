@@ -84,6 +84,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fullsimple"
+version = "0.1.0"
+dependencies = [
+ "nom",
+ "rstest",
+ "rustyline",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"

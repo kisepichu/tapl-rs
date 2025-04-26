@@ -1,6 +1,10 @@
 # Untyped lambda calculus ($\lambda$)
 
-p.54, p.61
+```
+cargo run --bin untyped
+```
+
+Figure 5-3(p.54), 6.3(p.61)
 
 ## Syntax
 
@@ -31,6 +35,8 @@ v ::=&   &\quad (\text{values}) \\
 \end{align*}
 ```
 
+### parsing
+
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<abs>` は、 abstraction に変換される。
 - `<var>` は、 variable に変換される。
@@ -52,9 +58,13 @@ $$
 ## examples
 
 ```
-    (\\1 0)\0
-->  \(\0)0
+$ cargo run --bin untyped
+> (\\1 0)\0
+input= (\\1 0) \0
+   ->* \(\0) 0
+
+>
 ```
 
 de Bruijn index は何個外側の λ 抽象の変数かを表し、これは `(λx.λy.x y)λx.x -> λy.(λx.x)y` に対応。
-値呼び(call by value)の評価規則で、最後の y は値でないため、これ以上簡約(E-APPABS 適用)できなくなっている。 p.42
+値呼び(call by value)の評価規則で、最後の y は値でないため、これ以上簡約(E-APPABS 適用)できなくなっている。 5.1(p.42)
