@@ -43,7 +43,7 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
     fn walk(j: usize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
             Term::Var(k) => {
-                if Some(*k) == (j as isize + c).try_into().ok() {
+                if *k as isize == j as isize + c {
                     s.shift(c)
                 } else {
                     Ok(Term::Var(*k))
