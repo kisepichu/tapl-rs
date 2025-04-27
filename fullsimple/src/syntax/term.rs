@@ -20,7 +20,7 @@ impl fmt::Display for Term {
         fn p(term: &Term, has_arg_after: bool, is_app_right: bool) -> String {
             match term {
                 Term::Var(x) => format!("{}", x),
-                Term::TmpVar(x) => format!("{}", x),
+                Term::TmpVar(x) => x.to_string(),
                 Term::Abs(ty, t) => {
                     if has_arg_after {
                         format!("(\\:{}.{})", ty, p(t, false, false))
