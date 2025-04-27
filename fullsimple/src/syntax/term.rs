@@ -5,12 +5,14 @@ use super::r#type::Type;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     Var(usize),
+    TmpVar(String),
     Abs(Type, Box<Term>),
     App(Box<Term>, Box<Term>),
     Unit,
     True,
     False,
     If(Box<Term>, Box<Term>, Box<Term>),
+    Let(Box<Term>, Box<Term>),
 }
 
 impl fmt::Display for Term {
@@ -18,6 +20,7 @@ impl fmt::Display for Term {
         fn p(term: &Term, has_arg_after: bool, is_app_right: bool) -> String {
             match term {
                 Term::Var(x) => format!("{}", x),
+                Term::TmpVar(x) => x.to_string(),
                 Term::Abs(ty, t) => {
                     if has_arg_after {
                         format!("(\\:{}.{})", ty, p(t, false, false))
@@ -37,10 +40,25 @@ impl fmt::Display for Term {
                 Term::False => "false".to_string(),
                 Term::If(t1, t2, t3) => format!(
                     "if {} then {} else {}",
-                    p(t1, true, false),
-                    p(t2, true, false),
-                    p(t3, true, false)
+                    p(t1, false, false),
+                    p(t2, false, false),
+                    if has_arg_after {
+                        format!("({})", p(t3, false, false))
+                    } else {
+                        p(t3, false, false)
+                    }
                 ),
+                Term::Let(t1, t2) => {
+                    if has_arg_after {
+                        format!(
+                            "let 0 = {} in ({})",
+                            p(t1, false, false),
+                            p(t2, false, false)
+                        )
+                    } else {
+                        format!("let 0 = {} in {}", p(t1, false, false), p(t2, false, false))
+                    }
+                }
             }
         }
         write!(f, "{}", p(self, false, false))

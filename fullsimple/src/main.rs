@@ -37,7 +37,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                // println!("{:?}", t);
+                println!("{:?}", t);
 
                 let ctx = Context::default();
 
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                println!("   ->* {}", t);
+                println!("   ->* {}\n", t);
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

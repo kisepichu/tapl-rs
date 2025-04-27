@@ -5,13 +5,17 @@ use crate::syntax::{context::Context, term::Term, r#type::Type};
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
-        Term::Var(x) => match ctx.get(*x) {
+        Term::Var(xn) => match ctx.get(*xn) {
             Some(ty) => Ok(ty.clone()),
             None => Err(format!(
                 "type check failed: {}\n: unbound variable {}",
-                t, x
+                t, xn
             )),
         },
+        Term::TmpVar(s) => Err(format!(
+            "type check failed: {}\n: undefined variable: {}",
+            t, s
+        )),
         Term::Abs(ty, t2) => {
             let ctx = ctx.clone().push(ty.clone());
             let ty2 = type_of(&ctx, t2)?;
@@ -64,6 +68,11 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 ))
             }
         }
+        Term::Let(t1, t2) => {
+            let ty1 = type_of(ctx, t1)?;
+            let ctx = ctx.clone().push(ty1);
+            type_of(&ctx, t2)
+        }
     }
 }
 
@@ -71,6 +80,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 #[case(r"unit", Some(Type::Unit))]
 #[case(r"unit;0", None)]
 #[case(r"(\:Bool. ( unit ; 0 ) ) true", Some(Type::Bool))]
+#[case(r"(\:Bool.(unit;unit;0))true", Some(Type::Bool))]
 #[case(r"true", Some(Type::Bool))]
 #[case(r"false", Some(Type::Bool))]
 #[case(

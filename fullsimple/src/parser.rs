@@ -5,20 +5,59 @@ use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{char, digit1, multispace0},
-    combinator::{map, map_res},
-    multi::many0,
+    character::complete::{alpha1, char, digit1, multispace0},
+    combinator::{map, map_res, opt},
+    multi::{many0, many1},
     sequence::{delimited, preceded},
 };
+
+fn reserved(i: &str) -> bool {
+    let rs = ["let", "in", "if", "then", "else", "true", "unit", "false"];
+    rs.iter().any(|s| *s == i)
+}
+
+impl Term {
+    fn subst_name(&self, zero_name: &str) -> Term {
+        fn walk(t: &Term, z: &str, c: usize) -> Term {
+            match t {
+                Term::Var(x) => Term::Var(*x),
+                Term::TmpVar(s) => {
+                    if z == *s {
+                        Term::Var(c)
+                    } else {
+                        t.clone()
+                    }
+                }
+                Term::Abs(ty, t1) => Term::Abs(ty.clone(), Box::new(walk(t1, z, c + 1))),
+                Term::App(t1, t2) => Term::App(Box::new(walk(t1, z, c)), Box::new(walk(t2, z, c))),
+                Term::Unit => Term::Unit,
+                Term::True => Term::True,
+                Term::False => Term::False,
+                Term::If(t1, t2, t3) => Term::If(
+                    Box::new(walk(t1, z, c)),
+                    Box::new(walk(t2, z, c)),
+                    Box::new(walk(t3, z, c)),
+                ),
+                Term::Let(t1, t2) => {
+                    let t1 = walk(t1, z, c);
+                    let t2 = walk(t2, z, c + 1);
+                    Term::Let(Box::new(t1), Box::new(t2))
+                }
+            }
+        }
+        walk(self, zero_name, 0)
+    }
+}
 
 // <term> ::= <seq>
 // <seq> ::= <app> ";" <seq> | <app>
 // <app>  ::= <atom> <app> | <atom>
-// <atom> ::= <encl> | <abs> | <var> | <unit> | <true> | <false> | <if>
+// <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
 // <encl> ::= "(" <term> ")"
-// <abs> ::= "\:" <ty> "." <term>
+// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
+// <let> ::= "let" <bound> "=" <term> "in" <term>
 // <if> ::= "if" <term> "then" <term> "else" <term>
-// <var> ::= number
+// <var> ::= number | string
 // <unit> ::= "unit"
 // <true> ::= "true"
 // <false> ::= "false"
@@ -30,6 +69,19 @@ use nom::{
 // <tyencl> ::= "(" <ty> ")"
 // <tyunit> ::= "Unit"
 // <tybool> ::= "Bool"
+
+fn parse_string(i: &str) -> IResult<&str, String> {
+    let (i, s) = many1(alpha1).parse(i)?;
+    let s = s.iter().fold("".to_string(), |acc, c| acc + c);
+    if reserved(s.as_str()) {
+        Err(nom::Err::Error(nom::error::Error::new(
+            i,
+            nom::error::ErrorKind::Fail,
+        )))
+    } else {
+        Ok((i, s))
+    }
+}
 
 /// <tyatom> ::= <tyencl> | <tyunit> | <tybool>
 fn parse_tyatom(i: &str) -> IResult<&str, Type> {
@@ -97,9 +149,17 @@ fn parse_unit(i: &str) -> IResult<&str, Term> {
     map(tag("unit"), |_| Term::Unit).parse(i)
 }
 
-/// <var> ::= number
-fn parse_var(i: &str) -> IResult<&str, Term> {
+/// <var> ::= number | string
+fn parse_varnum(i: &str) -> IResult<&str, Term> {
     map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
+}
+fn parse_varstr(i: &str) -> IResult<&str, Term> {
+    let (i, s) = parse_string(i)?;
+    Ok((i, Term::TmpVar(s)))
+}
+fn parse_var(i: &str) -> IResult<&str, Term> {
+    let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
+    Ok((i, v))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
@@ -112,13 +172,33 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
 }
 
-/// <abs> ::= "\:" <ty> "." <term>
+/// <let> ::= "let" <bound> "=" <term> "in" <term>
+fn parse_let(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, name) = preceded(multispace0, alpha1).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    let renamed = t2.subst_name(name);
+    Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
+}
+
+/// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
+    let (i, name) = opt(parse_string).parse(i)?;
     let (i, _) = preceded(char(':'), multispace0).parse(i)?;
     let (i, ty) = parse_ty_space(i)?;
     let (i, t) = preceded(char('.'), parse_term).parse(i)?;
-    Ok((i, Term::Abs(ty, Box::new(t))))
+
+    match name {
+        Some(name) => {
+            let renamed = t.subst_name(&name);
+            Ok((i, Term::Abs(ty, Box::new(renamed))))
+        }
+        None => Ok((i, Term::Abs(ty, Box::new(t)))),
+    }
 }
 
 /// <encl> ::= "(" <term> ")"
@@ -126,11 +206,12 @@ fn parse_encl(i: &str) -> IResult<&str, Term> {
     delimited(char('('), parse_term_space, char(')')).parse(i)
 }
 
-/// <atom> ::= <var> | <abs> | <encl> | <unit> | <true> | <false> | <if>
+/// <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
 fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
+            parse_let,
             parse_if,
             parse_false,
             parse_true,
@@ -159,7 +240,7 @@ fn parse_seq(i: &str) -> IResult<&str, Term> {
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
     let t = rest.into_iter().fold(first, |acc, t| {
         Term::App(
-            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))), // plus shift does not fail
+            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))),
             Box::new(acc),
         )
     });
@@ -182,7 +263,7 @@ pub fn parse(input: &str) -> Result<Term, String> {
     if rest.is_empty() {
         Ok(t)
     } else {
-        Err("parse error: input not fully consumed".to_string())
+        Err(format!("parse error: input not fully consumed: {}", rest))
     }
 }
 
