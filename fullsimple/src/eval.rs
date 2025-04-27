@@ -3,8 +3,8 @@ use num::FromPrimitive;
 use crate::syntax::term::Term;
 
 impl Term {
-    pub fn shift(&self, d: isize) -> Result<Term, String> {
-        fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {
+    pub fn shift(&self, d: isize, zero_name: Option<String>) -> Result<Term, String> {
+        fn walk(t: &Term, d: isize, c: usize, z: &Option<String>) -> Result<Term, String> {
             match t {
                 Term::Var(x) => {
                     if *x >= c {
@@ -15,26 +15,33 @@ impl Term {
                         Ok(Term::Var(*x))
                     }
                 }
-                Term::Abs(ty, t1) => Ok(Term::Abs(ty.clone(), Box::new(walk(t1, d, c + 1)?))),
+                Term::TmpVar(s) => {
+                    if d == 0 && Some(s.clone()) == *z {
+                        Ok(Term::Var(c))
+                    } else {
+                        Ok(t.clone())
+                    }
+                }
+                Term::Abs(ty, t1) => Ok(Term::Abs(ty.clone(), Box::new(walk(t1, d, c + 1, z)?))),
                 Term::App(t1, t2) => Ok(Term::App(
-                    Box::new(walk(t1, d, c)?),
-                    Box::new(walk(t2, d, c)?),
+                    Box::new(walk(t1, d, c, z)?),
+                    Box::new(walk(t2, d, c, z)?),
                 )),
                 Term::Unit => Ok(Term::Unit),
                 Term::True => Ok(Term::True),
                 Term::False => Ok(Term::False),
                 Term::If(t1, t2, t3) => Ok(Term::If(
-                    Box::new(walk(t1, d, c)?),
-                    Box::new(walk(t2, d, c)?),
-                    Box::new(walk(t3, d, c)?),
+                    Box::new(walk(t1, d, c, z)?),
+                    Box::new(walk(t2, d, c, z)?),
+                    Box::new(walk(t3, d, c, z)?),
                 )),
                 Term::Let(t1, t2) => Ok(Term::Let(
-                    Box::new(walk(t1, d, c)?),
-                    Box::new(walk(t2, d, c)?),
+                    Box::new(walk(t1, d, c, z)?),
+                    Box::new(walk(t2, d, c + 1, z)?),
                 )),
             }
         }
-        walk(self, d, 0)
+        walk(self, d, 0, &zero_name)
     }
 }
 
@@ -43,11 +50,12 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
         match t {
             Term::Var(k) => {
                 if Some(*k) == (j as isize + c).try_into().ok() {
-                    s.shift(c)
+                    s.shift(c, None)
                 } else {
                     Ok(Term::Var(*k))
                 }
             }
+            Term::TmpVar(_) => Ok(t.clone()),
             Term::Abs(ty, t1) => Ok(Term::Abs(ty.clone(), Box::new(walk(j, s, c + 1, t1)?))),
             Term::App(t1, t2) => Ok(Term::App(
                 Box::new(walk(j, s, c, t1)?),
@@ -63,7 +71,7 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
             )),
             Term::Let(t1, t2) => Ok(Term::Let(
                 Box::new(walk(j, s, c, t1)?),
-                Box::new(walk(j, s, c, t2)?),
+                Box::new(walk(j, s, c + 1, t2)?),
             )),
         }
     }
@@ -71,7 +79,7 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
 }
 
 fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
-    term_subst(0, &s.shift(1)?, t)?.shift(-1)
+    term_subst(0, &s.shift(1, None)?, t)?.shift(-1, None)
 }
 
 fn eval1(t: &Term) -> Result<Term, String> {
@@ -87,8 +95,8 @@ fn eval1(t: &Term) -> Result<Term, String> {
             _ => Term::If(Box::new(eval1(t1)?), t2.clone(), t3.clone()),
         }),
         Term::Let(t1, t2) => match (&**t1, &**t2) {
-            (v1, t2) if v1.isval() => term_subst(0, v1, t2),
-            _ => Ok(Term::App(Box::new(eval1(t1)?), t2.clone())),
+            (v1, t2) if v1.isval() => term_subst(0, v1, t2)?.shift(-1, None),
+            _ => Ok(Term::Let(Box::new(eval1(t1)?), t2.clone())),
         },
         _ => Err("eval1: no rule applies".to_string()),
     }

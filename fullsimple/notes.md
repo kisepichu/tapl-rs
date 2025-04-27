@@ -71,6 +71,16 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
+- 注意: contexts は実装上は以下のようになっている。ただし、 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする。これにより、評価規則や(T-VAR 以外の)型付け規則中の $x$ を全て $0$ に固定できる。
+
+```math
+\begin{align*}
+\Gamma ::=&   &\quad (\text{contexts}) \\
+  \quad \mid\ &\varnothing &\quad (\text{empty}) \\
+  \quad \mid\ &\uparrow^1 \Gamma, 0\mathord{:}T &\quad (\text{term variable binding}) \\
+\end{align*}
+```
+
 ### Derived forms
 
 ```math
@@ -78,18 +88,9 @@ T ::=&   &\quad (\text{types}) \\
   \quad & \quad &\text{(derived forms)} \\
 t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
 \\
-\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ \uparrow^{1}t_2 \quad & (\text{let'})
+\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ t_2 \quad & (\text{let'})
 \end{align*}
 ```
-
-### parsing
-
-- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
-- `<app>` は、 `<atom>` の列が左結合で application に変換される。
-- `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
-- 糖衣構文(syntactic sugar, derived forms)を含む。
-  - `<seq>` は、`<app>` と ";" の列が左結合で sequence に変換され、脱糖衣される。
-  - `<let>` は、let' に変換され、脱糖衣される。
 
 補足:
 
@@ -102,8 +103,16 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 \end{align*}
 ```
 
-- let もシフトと糖衣構文を使って名無し項にした。
 - let は abs を使った糖衣構文にはしない。11.5(p.95)
+
+### parsing
+
+- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
+- `<app>` は、 `<atom>` の列が左結合で application に変換される。
+- `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
+- 糖衣構文(syntactic sugar, derived forms)を含む。
+  - `<seq>` は、`<app>` と ";" の列が左結合で sequence に変換され、脱糖衣される。
+  - `<let>` は、let' に変換され、脱糖衣される。
 
 ## evaluation
 
@@ -111,7 +120,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 
 ```math
 \begin{align*}
-\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [0 \mapsto\ \uparrow^{1} v_2]t_{12}} \quad &\text{(E-APPABS)} \\
+\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [x \mapsto\ \uparrow^{1} v_2]t_{12}} \quad &\text{(E-APPABS)} \\
 \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
@@ -123,7 +132,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad &\text{(E-IF)} \\
 \\
-\frac{}{\mathrm{let}\ v_1\ \mathrm{in}\ t_2 \rightarrow \uparrow^{-1}[0\mapsto v_1]t_2} \quad &(\text{E-LETV}) \\
+\frac{}{\mathrm{let}\ v_1\ \mathrm{in}\ t_2 \rightarrow \uparrow^{-1}[x\mapsto v_1]\uparrow^{1}t_2} \quad &(\text{E-LETV}) \\
 \\
 \frac{t_1\rightarrow t_1'}{\mathrm{let}\ t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{let}\ t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-LET}) \\
 \end{align*}
@@ -149,7 +158,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad &\text{(T-IF)} \\
 \\
-\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \Gamma,x\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ x=t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
+\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \Gamma, x\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
 \end{align*}
 ```
 

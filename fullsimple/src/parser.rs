@@ -116,7 +116,7 @@ fn parse_varstr(i: &str) -> IResult<&str, Term> {
             nom::error::ErrorKind::Fail,
         )))
     } else {
-        Ok((i, Term::Var(0)))
+        Ok((i, Term::TmpVar(s)))
     }
 }
 fn parse_var(i: &str) -> IResult<&str, Term> {
@@ -137,13 +137,13 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
 /// <let> ::= "let" string "=" <term> "in" <term>
 fn parse_let(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
-    let (i, _) = preceded(multispace0, alpha1).parse(i)?;
+    let (i, name) = preceded(multispace0, alpha1).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
     let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
     let shifted = t2
-        .shift(1)
+        .shift(0, Some(name.to_string()))
         .map_err(|_| nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail)))?;
     Ok((i, Term::Let(Box::new(t1), Box::new(shifted))))
 }
@@ -194,18 +194,12 @@ fn parse_app(i: &str) -> IResult<&str, Term> {
 fn parse_seq(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_app.parse(i)?;
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
-    // let t = rest.into_iter().try_fold(first, |acc, t| {
-    //     let shifted = t.shift(1).map_err(|_| {
-    //         nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
-    //     })?;
-    //     Ok(Term::App(
-    //         Box::new(Term::Abs(Type::Unit, Box::new(shifted))),
-    //         Box::new(acc),
-    //     ))
-    // })?;
     let t = rest.into_iter().fold(first, |acc, t| {
         Term::App(
-            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))), // plus shift does not fail
+            Box::new(Term::Abs(
+                Type::Unit,
+                Box::new(t.shift(1, None).unwrap_or(t)),
+            )), // todo: abs bound var name
             Box::new(acc),
         )
     });
