@@ -16,6 +16,39 @@ fn reserved(i: &str) -> bool {
     rs.iter().any(|s| *s == i)
 }
 
+impl Term {
+    fn subst_name(&self, zero_name: &str) -> Term {
+        fn walk(t: &Term, z: &str, c: usize) -> Term {
+            match t {
+                Term::Var(x) => Term::Var(*x),
+                Term::TmpVar(s) => {
+                    if z == *s {
+                        Term::Var(c)
+                    } else {
+                        t.clone()
+                    }
+                }
+                Term::Abs(ty, t1) => Term::Abs(ty.clone(), Box::new(walk(t1, z, c + 1))),
+                Term::App(t1, t2) => Term::App(Box::new(walk(t1, z, c)), Box::new(walk(t2, z, c))),
+                Term::Unit => Term::Unit,
+                Term::True => Term::True,
+                Term::False => Term::False,
+                Term::If(t1, t2, t3) => Term::If(
+                    Box::new(walk(t1, z, c)),
+                    Box::new(walk(t2, z, c)),
+                    Box::new(walk(t3, z, c)),
+                ),
+                Term::Let(t1, t2) => {
+                    let t1 = walk(t1, z, c);
+                    let t2 = walk(t2, z, c + 1);
+                    Term::Let(Box::new(t1), Box::new(t2))
+                }
+            }
+        }
+        walk(self, zero_name, 0)
+    }
+}
+
 // <term> ::= <seq>
 // <seq> ::= <app> ";" <seq> | <app>
 // <app>  ::= <atom> <app> | <atom>
@@ -147,9 +180,7 @@ fn parse_let(i: &str) -> IResult<&str, Term> {
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
     let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let renamed = t2
-        .shift(0, Some(name.to_string()))
-        .map_err(|_| nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail)))?;
+    let renamed = t2.subst_name(name);
     Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
 }
 
@@ -163,9 +194,7 @@ fn parse_abs(i: &str) -> IResult<&str, Term> {
 
     match name {
         Some(name) => {
-            let renamed = t.shift(0, Some(name.to_string())).map_err(|_| {
-                nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
-            })?;
+            let renamed = t.subst_name(&name);
             Ok((i, Term::Abs(ty, Box::new(renamed))))
         }
         None => Ok((i, Term::Abs(ty, Box::new(t)))),
@@ -211,10 +240,7 @@ fn parse_seq(i: &str) -> IResult<&str, Term> {
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
     let t = rest.into_iter().fold(first, |acc, t| {
         Term::App(
-            Box::new(Term::Abs(
-                Type::Unit,
-                Box::new(t.shift(1, None).unwrap_or(t)),
-            )), // todo: abs bound var name
+            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))), // todo: abs bound var name
             Box::new(acc),
         )
     });

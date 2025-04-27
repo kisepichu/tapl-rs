@@ -89,25 +89,19 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 
 補足:
 
-- 本文では sequence は以下のようになっているが、シフトすることで名無し項で同じことをする実装にした。未証明
-
-```math
-\begin{align*}
-t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t_1  \\
-   \quad & \text{where} \quad x \notin \mathrm{FV}(t_2) \quad & (\text{sequence})
-\end{align*}
-```
-
+- それぞれ名無し項用に本文と定義を変えている。同じになることは未証明
 - let は abs を使った糖衣構文にはしない。11.5(p.95)
+- 名前 $x$ を置換する $[x\rightarrow 0]$ の実装は `subst_name` in [`fullsimple/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/parser.rs)
 
 ### parsing
 
-- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
+- `<var>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
 - 糖衣構文(syntactic sugar, derived forms)を含む。
   - `<seq>` は、`<app>` と ";" の列が左結合で sequence に変換され、脱糖衣される。
   - `<let>` は、let' に変換され、脱糖衣される。
+  - `<abs>` は abs に変換されるか、 abs' に変換され脱糖衣される。
 
 ## evaluation
 
