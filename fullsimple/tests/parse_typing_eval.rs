@@ -43,6 +43,15 @@ extern crate fullsimple;
     Some(r"Bool"),
     Some(r"false")
 )]
+#[case(
+    r"
+    (\f:Bool->Bool.\:Bool.f 0)
+    (\b:Bool.if b then false else true)
+    true
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
 fn test_parse_typing_eval(
     #[case] input: &str,
     #[case] expected_type: Option<&str>,

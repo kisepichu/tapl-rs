@@ -6,7 +6,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, char, digit1, multispace0},
-    combinator::{map, map_res},
+    combinator::{map, map_res, opt},
     multi::{many0, many1},
     sequence::{delimited, preceded},
 };
@@ -21,8 +21,8 @@ fn reserved(i: &str) -> bool {
 // <app>  ::= <atom> <app> | <atom>
 // <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
 // <encl> ::= "(" <term> ")"
-// <abs> ::= "\:" <ty> "." <term>
-// <let> ::= "let" string "=" <term> "in" <term>
+// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
+// <let> ::= "let" <bound> "=" <term> "in" <term>
 // <if> ::= "if" <term> "then" <term> "else" <term>
 // <var> ::= number | string
 // <unit> ::= "unit"
@@ -36,6 +36,19 @@ fn reserved(i: &str) -> bool {
 // <tyencl> ::= "(" <ty> ")"
 // <tyunit> ::= "Unit"
 // <tybool> ::= "Bool"
+
+fn parse_string(i: &str) -> IResult<&str, String> {
+    let (i, s) = many1(alpha1).parse(i)?;
+    let s = s.iter().fold("".to_string(), |acc, c| acc + c);
+    if reserved(s.as_str()) {
+        Err(nom::Err::Error(nom::error::Error::new(
+            i,
+            nom::error::ErrorKind::Fail,
+        )))
+    } else {
+        Ok((i, s))
+    }
+}
 
 /// <tyatom> ::= <tyencl> | <tyunit> | <tybool>
 fn parse_tyatom(i: &str) -> IResult<&str, Type> {
@@ -108,16 +121,8 @@ fn parse_varnum(i: &str) -> IResult<&str, Term> {
     map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
 }
 fn parse_varstr(i: &str) -> IResult<&str, Term> {
-    let (i, s) = many1(alpha1).parse(i)?;
-    let s = s.iter().fold("".to_string(), |acc, c| acc + c);
-    if reserved(s.as_str()) {
-        Err(nom::Err::Error(nom::error::Error::new(
-            i,
-            nom::error::ErrorKind::Fail,
-        )))
-    } else {
-        Ok((i, Term::TmpVar(s)))
-    }
+    let (i, s) = parse_string(i)?;
+    Ok((i, Term::TmpVar(s)))
 }
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
@@ -134,7 +139,7 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
 }
 
-/// <let> ::= "let" string "=" <term> "in" <term>
+/// <let> ::= "let" <bound> "=" <term> "in" <term>
 fn parse_let(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
     let (i, name) = preceded(multispace0, alpha1).parse(i)?;
@@ -142,19 +147,29 @@ fn parse_let(i: &str) -> IResult<&str, Term> {
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
     let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let shifted = t2
+    let renamed = t2
         .shift(0, Some(name.to_string()))
         .map_err(|_| nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail)))?;
-    Ok((i, Term::Let(Box::new(t1), Box::new(shifted))))
+    Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
 }
 
-/// <abs> ::= "\:" <ty> "." <term>
+/// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
+    let (i, name) = opt(parse_string).parse(i)?;
     let (i, _) = preceded(char(':'), multispace0).parse(i)?;
     let (i, ty) = parse_ty_space(i)?;
     let (i, t) = preceded(char('.'), parse_term).parse(i)?;
-    Ok((i, Term::Abs(ty, Box::new(t))))
+
+    match name {
+        Some(name) => {
+            let renamed = t.shift(0, Some(name.to_string())).map_err(|_| {
+                nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
+            })?;
+            Ok((i, Term::Abs(ty, Box::new(renamed))))
+        }
+        None => Ok((i, Term::Abs(ty, Box::new(t)))),
+    }
 }
 
 /// <encl> ::= "(" <term> ")"

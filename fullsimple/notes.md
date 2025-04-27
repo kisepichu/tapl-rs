@@ -19,10 +19,11 @@ $ cargo run --bin fullsimple
 <seq> ::= <app> ";" <seq> | <app>
 <app>  ::= <atom> <app> | <atom>
 <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
-<let> ::= "let" string "=" <term> "in" <term>
+<let> ::= "let" <bound> "=" <term> "in" <term>
 <encl> ::= "(" <term> ")"
-<abs> ::= "\:" <ty> "." <term>
+<abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
+<bound> ::= string
 <var> ::= number | string
 <unit> ::= "unit"
 <true> ::= "true"
@@ -67,19 +68,11 @@ T ::=&   &\quad (\text{types}) \\
 
 \Gamma ::=&   &\quad (\text{contexts}) \\
   \quad \mid\ &\varnothing &\quad (\text{empty}) \\
-  \quad \mid\ &\Gamma, x\mathord{:}T &\quad (\text{term variable binding}) \\
-\end{align*}
-```
-
-- 注意: contexts は実装上は以下のようになっている。ただし、 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする。これにより、評価規則や(T-VAR 以外の)型付け規則中の $x$ を全て $0$ に固定できる。
-
-```math
-\begin{align*}
-\Gamma ::=&   &\quad (\text{contexts}) \\
-  \quad \mid\ &\varnothing &\quad (\text{empty}) \\
   \quad \mid\ &\uparrow^1 \Gamma, 0\mathord{:}T &\quad (\text{term variable binding}) \\
 \end{align*}
 ```
+
+- contexts の定義を本文と変えている。 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする。これにより、評価規則や(T-VAR 以外の)型付け規則中の $x$ を全て $0$ に固定できる。しかしこの先に出てくる要素でこの方法で形式化できなくなるかもしれないので様子見。
 
 ### Derived forms
 
@@ -88,7 +81,9 @@ T ::=&   &\quad (\text{types}) \\
   \quad & \quad &\text{(derived forms)} \\
 t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
 \\
-\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ t_2 \quad & (\text{let'})
+\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ [x\mapsto 0]t_2 \quad & (\text{let'}) \\
+\\
+\lambda x:T.t_2 \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
 \end{align*}
 ```
 
@@ -120,7 +115,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 
 ```math
 \begin{align*}
-\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [x \mapsto\ \uparrow^{1} v_2]t_{12}} \quad &\text{(E-APPABS)} \\
+\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} ([0 \mapsto\ \uparrow^{1} v_2]t_{12})} \quad &\text{(E-APPABS)} \\
 \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
@@ -132,7 +127,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad &\text{(E-IF)} \\
 \\
-\frac{}{\mathrm{let}\ v_1\ \mathrm{in}\ t_2 \rightarrow \uparrow^{-1}[x\mapsto v_1]\uparrow^{1}t_2} \quad &(\text{E-LETV}) \\
+\frac{}{\mathrm{let}\ v_1\ \mathrm{in}\ t_2 \rightarrow \uparrow^{-1}[0\mapsto v_1]\uparrow^{1}t_2} \quad &(\text{E-LETV}) \\
 \\
 \frac{t_1\rightarrow t_1'}{\mathrm{let}\ t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{let}\ t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-LET}) \\
 \end{align*}
@@ -146,7 +141,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 \begin{align*}
 \frac{x\mathord{:}T \in \Gamma}{\Gamma \vdash x \mathord{:} T} \quad &\text{(T-VAR)} \\
 \\
-\frac{\Gamma, x\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad &\text{(T-ABS)} \\
+\frac{\uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad &\text{(T-ABS)} \\
 \\
 \frac{{\Gamma \vdash t_1 \mathord{:} T_{11} \rightarrow T_{12}} \quad {\Gamma \vdash t_2 \mathord{:} T_{21}}}{\Gamma \vdash t_1\ t_2 \mathord{:} T_{12} \rightarrow T_{21}} \quad &\text{(T-APP)} \\
 \\
@@ -158,8 +153,10 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad &\text{(T-IF)} \\
 \\
-\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \Gamma, x\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
+\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
 \end{align*}
 ```
+
+- Abstract syntax 注意参照。
 
 ### examples
