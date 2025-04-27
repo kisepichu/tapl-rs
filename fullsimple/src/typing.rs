@@ -64,7 +64,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 ))
             }
         }
-        Term::Let(t1, t2) => {
+        Term::Let(_t1, _t2) => {
             todo!()
         }
     }

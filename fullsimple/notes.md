@@ -49,7 +49,7 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
-  \quad \mid\ &\mathrm{let}\ x=v_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
+  \quad \mid\ &\mathrm{let}\ v_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
   \\
 
 v ::=&   &\quad (\text{values}) \\
@@ -71,29 +71,39 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-### parsing
-
-- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>`, `<let>` が、それぞれ対応する term に変換される。
-- `<app>` は、 `<atom>` の列が左結合で application に変換される。
-- `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
-- 以下の糖衣構文(syntactic sugar)を含む。
-  - `<seq>` は、 `<app>` と ";" の列が左結合で脱糖衣される。
+### Derived forms
 
 ```math
 \begin{align*}
   \quad & \quad &\text{(derived forms)} \\
-t_1; t_2 \stackrel{\mathrm{def}}{=} & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence})
+t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
+\\
+\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ \uparrow^{1}t_2 \quad & (\text{let'})
 \end{align*}
 ```
 
-###### 補足: 本文では sequence は以下のようになっているが、シフトすることで名無し項で同じことをする実装にした。未証明
+### parsing
+
+- `<var>`, `<abs>`, `<true>`, `<false>`, `<unit>`, `<if>` が、それぞれ対応する term に変換される。
+- `<app>` は、 `<atom>` の列が左結合で application に変換される。
+- `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
+- 糖衣構文(syntactic sugar, derived forms)を含む。
+  - `<seq>` は、`<app>` と ";" の列が左結合で sequence に変換され、脱糖衣される。
+  - `<let>` は、let' に変換され、脱糖衣される。
+
+補足:
+
+- 本文では sequence は以下のようになっているが、シフトすることで名無し項で同じことをする実装にした。未証明
 
 ```math
 \begin{align*}
-t_1; t_2 \stackrel{\mathrm{def}}{=} & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t_1  \\
+t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t_1  \\
    \quad & \text{where} \quad x \notin \mathrm{FV}(t_2) \quad & (\text{sequence})
 \end{align*}
 ```
+
+- let もシフトと糖衣構文を使って名無し項にした。
+- let は abs を使った糖衣構文にはしない。11.5(p.95)
 
 ## evaluation
 
@@ -101,7 +111,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t_
 
 ```math
 \begin{align*}
-\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [`0 \mapsto\ \uparrow^{1} v_2`]t_{12}} \quad &\text{(E-APPABS)} \\
+\frac{}{(\lambda\mathord{:}T.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [0 \mapsto\ \uparrow^{1} v_2]t_{12}} \quad &\text{(E-APPABS)} \\
 \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
@@ -113,9 +123,9 @@ t_1; t_2 \stackrel{\mathrm{def}}{=} & (\lambda x\mathord{:}\mathrm{Unit}.t_2) t_
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad &\text{(E-IF)} \\
 \\
-\frac{}{\mathrm{let}\ x=v_1\ \mathrm{in}\ t_2 \rightarrow [x\mapsto v_1]t_2} \quad &(\text{E-LETV}) \\
+\frac{}{\mathrm{let}\ v_1\ \mathrm{in}\ t_2 \rightarrow \uparrow^{-1}[0\mapsto v_1]t_2} \quad &(\text{E-LETV}) \\
 \\
-\frac{t_1\rightarrow t_1'}{\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{let}\ x=t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-LET}) \\
+\frac{t_1\rightarrow t_1'}{\mathrm{let}\ t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{let}\ t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-LET}) \\
 \end{align*}
 ```
 

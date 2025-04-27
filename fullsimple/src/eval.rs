@@ -87,8 +87,8 @@ fn eval1(t: &Term) -> Result<Term, String> {
             _ => Term::If(Box::new(eval1(t1)?), t2.clone(), t3.clone()),
         }),
         Term::Let(t1, t2) => match (&**t1, &**t2) {
-            (v1, t2) if v1.isval() => term_subst(0, t2, v1),
-            _ => Ok(t.clone()),
+            (v1, t2) if v1.isval() => term_subst(0, v1, t2),
+            _ => Ok(Term::App(Box::new(eval1(t1)?), t2.clone())),
         },
         _ => Err("eval1: no rule applies".to_string()),
     }

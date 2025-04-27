@@ -11,6 +11,11 @@ use nom::{
     sequence::{delimited, preceded},
 };
 
+fn reserved(i: &str) -> bool {
+    let rs = ["let", "in", "if", "then", "else", "true", "unit", "false"];
+    rs.iter().any(|s| *s == i)
+}
+
 // <term> ::= <seq>
 // <seq> ::= <app> ";" <seq> | <app>
 // <app>  ::= <atom> <app> | <atom>
@@ -103,8 +108,16 @@ fn parse_varnum(i: &str) -> IResult<&str, Term> {
     map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
 }
 fn parse_varstr(i: &str) -> IResult<&str, Term> {
-    let (i, _) = many1(alpha1).parse(i)?;
-    Ok((i, Term::Var(0)))
+    let (i, s) = many1(alpha1).parse(i)?;
+    let s = s.iter().fold("".to_string(), |acc, c| acc + c);
+    if reserved(s.as_str()) {
+        Err(nom::Err::Error(nom::error::Error::new(
+            i,
+            nom::error::ErrorKind::Fail,
+        )))
+    } else {
+        Ok((i, Term::Var(0)))
+    }
 }
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
@@ -122,8 +135,17 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
 }
 
 /// <let> ::= "let" string "=" <term> "in" <term>
-fn parse_let(_: &str) -> IResult<&str, Term> {
-    todo!(); // t2.shift(1), replace name with 0
+fn parse_let(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, _) = preceded(multispace0, alpha1).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    let shifted = t2
+        .shift(1)
+        .map_err(|_| nom::Err::Failure(nom::error::Error::new(i, nom::error::ErrorKind::Fail)))?;
+    Ok((i, Term::Let(Box::new(t1), Box::new(shifted))))
 }
 
 /// <abs> ::= "\:" <ty> "." <term>
@@ -145,7 +167,7 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
-            // parse_let,
+            parse_let,
             parse_if,
             parse_false,
             parse_true,

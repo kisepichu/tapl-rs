@@ -37,7 +37,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                // println!("{:?}", t);
+                println!("{:?}", t);
 
                 let ctx = Context::default();
 

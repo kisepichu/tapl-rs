@@ -1,3 +1,5 @@
+use num::FromPrimitive;
+
 use crate::syntax::term::Term;
 
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
@@ -5,7 +7,7 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
         match t {
             Term::Var(x) => {
                 if *x >= c {
-                    let s: usize = (*x as isize + d).try_into().unwrap();
+                    let s: usize = usize::from_isize(*x as isize + d).ok_or("minus after shift")?;
                     Ok(Term::Var(s))
                 } else {
                     Ok(Term::Var(*x))
