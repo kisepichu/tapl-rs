@@ -43,7 +43,8 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
     fn walk(j: usize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
             Term::Var(k) => {
-                if Some(*k) == (j as isize + c).try_into().ok() {
+                if let Some(adjusted) = (j as isize).checked_add(c).and_then(|sum| sum.try_into().ok()) {
+                    if *k == adjusted {
                     s.shift(c)
                 } else {
                     Ok(Term::Var(*k))
