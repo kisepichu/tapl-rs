@@ -8,7 +8,7 @@ pub struct Context {
 
 #[allow(dead_code)]
 impl Context {
-    pub fn push(&mut self, ty: Type) -> Context {
+    pub fn shift_and_push0(&mut self, ty: Type) -> Context {
         if self.binding.is_some() {
             Context {
                 parent: Some(Box::new(self.clone())),

@@ -16,10 +16,10 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             "type check failed: {}\n: undefined variable: {}",
             t, s
         )),
-        Term::Abs(ty, t2) => {
-            let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of(&ctx, t2)?;
-            Ok(Type::Arr(Box::new(ty.clone()), Box::new(ty2.clone())))
+        Term::Abs(ty1, t2) => {
+            let ctx_ = ctx.clone().shift_and_push0(ty1.clone());
+            let ty2 = type_of(&ctx_, t2)?;
+            Ok(Type::Arr(Box::new(ty1.clone()), Box::new(ty2.clone())))
         }
         Term::App(t1, t2) => {
             let ty1 = type_of(ctx, t1)?;
@@ -70,8 +70,8 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         }
         Term::Let(t1, t2) => {
             let ty1 = type_of(ctx, t1)?;
-            let ctx = ctx.clone().push(ty1);
-            type_of(&ctx, t2)
+            let ctx_ = ctx.clone().shift_and_push0(ty1);
+            type_of(&ctx_, t2)
         }
     }
 }
