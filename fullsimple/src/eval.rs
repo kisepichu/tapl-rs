@@ -30,12 +30,15 @@ impl Term {
                         .map(|field| {
                             Ok::<Field, String>(Field {
                                 label: field.label.clone(),
-                                term: walk(&field.term, d, c + 1)?,
+                                term: walk(&field.term, d, c)?,
                             })
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
                     Ok(Term::Record(fields))
+                }
+                Term::Projection(t, label) => {
+                    Ok(Term::Projection(Box::new(walk(t, d, c)?), label.clone()))
                 }
                 Term::If(t1, t2, t3) => Ok(Term::If(
                     Box::new(walk(t1, d, c)?),
@@ -77,12 +80,15 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
                     .map(|field| {
                         Ok::<Field, String>(Field {
                             label: field.label.clone(),
-                            term: walk(j, s, c + 1, &field.term)?,
+                            term: walk(j, s, c, &field.term)?,
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
                 Ok(Term::Record(fields))
+            }
+            Term::Projection(t, label) => {
+                Ok(Term::Projection(Box::new(walk(j, s, c, t)?), label.clone()))
             }
             Term::If(t1, t2, t3) => Ok(Term::If(
                 Box::new(walk(j, s, c, t1)?),
@@ -123,6 +129,21 @@ fn eval1(t: &Term) -> Result<Term, String> {
                 .collect::<Vec<Field>>();
 
             Ok(Term::Record(fields))
+        }
+        Term::Projection(t, label) => {
+            if t.isval() {
+                if let Term::Record(fields) = &**t {
+                    if let Some(field) = fields.iter().find(|f| f.label == *label) {
+                        Ok(field.term.clone())
+                    } else {
+                        Err(format!("internal error: undefined label: {}", label))
+                    }
+                } else {
+                    Err(format!("internal error: expected Record: {}", t))
+                }
+            } else {
+                Ok(Term::Projection(Box::new(eval1(t)?), label.clone()))
+            }
         }
         Term::If(t1, t2, t3) => Ok(match (&**t1, &**t2, &**t3) {
             (Term::True, t2, _) => t2.clone(),

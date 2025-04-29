@@ -4,53 +4,74 @@ extern crate fullsimple;
 #[rstest]
 #[case(
     r"
-    let f=\:Bool.0 in
-    let x=true in
-    f x",
+let f=\:Bool.0 in
+let x=true in
+f x
+    ",
     Some(r"Bool"),
     Some(r"true")
 )]
 #[case(
     r"
-    let x = true in
-    let f = \:Bool.0 in
-    f x",
+let x = true in
+let f = \:Bool.0 in
+f x
+    ",
     Some(r"Bool"),
     Some(r"true")
 )]
 #[case(
     r"
-    let f=\:Bool.\:Bool.0 in
-    let x=true in
-    let y=false in
-    f x y",
-    Some(r"Bool"),
-    Some(r"false")
-)]
-#[case(
-    r"
-    let f = 
-      let t = true
-        in
-      \:Bool->Bool. 0 t
-    in
-    f \:Bool.
-      if 0 then
-        false
-      else
-        true
+let f=\:Bool.\:Bool.0 in
+let x=true in
+let y=false in
+f x y
     ",
     Some(r"Bool"),
     Some(r"false")
 )]
 #[case(
     r"
-    (\f:Bool->Bool.\:Bool.f 0)
-    (\b:Bool.if b then false else true)
+let f = 
+  let t = true
+    in
+  \:Bool->Bool. 0 t
+in
+f \:Bool.
+  if 0 then
+    false
+  else
     true
     ",
     Some(r"Bool"),
     Some(r"false")
+)]
+#[case(
+    r"
+(\f:Bool->Bool.\:Bool.f 0)
+(\b:Bool.if b then false else true)
+true
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
+#[case(
+    r"
+let f = \:{cool:Bool, cute:Bool, f:Bool->Bool, Bool}.
+  if 0.cool then
+    if 0.cute then
+      0.f false
+    else
+      false
+  else
+    false
+in
+let x = {f=\b:Bool.true, cool=true, cute=false, true} in
+let y = {f=\b:Bool.true, cool=true, cute=true, false} in
+{f x, f y}
+    ",
+    Some(r"{0:Bool, 1:Bool}"),
+    Some(r"{0=false, 1=true}")
 )]
 fn test_parse_typing_eval(
     #[case] input: &str,

@@ -2,13 +2,13 @@ use std::fmt;
 
 use super::r#type::Type;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Field {
     pub label: String,
     pub term: Term,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Term {
     Var(usize),
     TmpVar(String),
@@ -20,6 +20,41 @@ pub enum Term {
     Record(Vec<Field>),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Box<Term>, Box<Term>),
+    Projection(Box<Term>, String),
+}
+
+impl PartialEq for Term {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Term::Var(x), Term::Var(y)) => x == y,
+            (Term::TmpVar(x), Term::TmpVar(y)) => x == y,
+            (Term::Abs(ty1, t1), Term::Abs(ty2, t2)) => ty1 == ty2 && t1 == t2,
+            (Term::App(t1a, t1b), Term::App(t2a, t2b)) => t1a == t2a && t1b == t2b,
+            (Term::Unit, Term::Unit) => true,
+            (Term::True, Term::True) => true,
+            (Term::False, Term::False) => true,
+            (Term::Record(fields1), Term::Record(fields2)) => {
+                if fields1.len() == fields2.len() {
+                    let mut fields1 = fields1.clone();
+                    let mut fields2 = fields2.clone();
+                    fields1.sort_by(|l, r| l.label.cmp(&r.label));
+                    fields2.sort_by(|l, r| l.label.cmp(&r.label));
+                    fields1
+                        .iter()
+                        .zip(fields2.iter())
+                        .all(|(e1, e2)| e1.label == e2.label && e1.term == e2.term)
+                } else {
+                    false
+                }
+            }
+            (Term::If(t1a, t1b, t1c), Term::If(t2a, t2b, t2c)) => {
+                t1a == t2a && t1b == t2b && t1c == t2c
+            }
+            (Term::Let(t1a, t1b), Term::Let(t2a, t2b)) => t1a == t2a && t1b == t2b,
+            (Term::Projection(t1, l1), Term::Projection(t2, l2)) => l1 == l2 && t1 == t2,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Term {
@@ -51,6 +86,9 @@ impl fmt::Display for Term {
                         .map(|field| format!("{}={}", field.label, p(&field.term, false, false)))
                         .collect();
                     format!("{{{}}}", fields_str.join(", "))
+                }
+                Term::Projection(t, label) => {
+                    format!("{}.{}", p(t, false, false), label)
                 }
                 Term::If(t1, t2, t3) => format!(
                     "if {} then {} else {}",

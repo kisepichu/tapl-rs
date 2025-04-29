@@ -67,6 +67,26 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 .collect::<Result<Vec<_>, String>>()?;
             Ok(Type::TyRecord(tyfields))
         }
+        Term::Projection(t1, label) => {
+            let ty1 = type_of(ctx, t1)?;
+            if let Type::TyRecord(fields) = ty1.clone() {
+                fields
+                    .iter()
+                    .find(|field| field.label == *label)
+                    .map(|field| field.ty.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "type check failed: {}\n  field {} not found in record type {}",
+                            t, label, ty1
+                        )
+                    })
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected record type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
         Term::If(t1, t2, t3) => {
             let ty1 = type_of(ctx, t1)?;
             let ty2 = type_of(ctx, t2)?;

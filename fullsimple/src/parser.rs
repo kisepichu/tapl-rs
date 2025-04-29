@@ -41,10 +41,13 @@ impl Term {
                         .iter()
                         .map(|field| Field {
                             label: field.label.clone(),
-                            term: walk(&field.term, z, c + 1),
+                            term: walk(&field.term, z, c),
                         })
                         .collect();
                     Term::Record(fields)
+                }
+                Term::Projection(t, label) => {
+                    Term::Projection(Box::new(walk(t, z, c)), label.clone())
                 }
                 Term::If(t1, t2, t3) => Term::If(
                     Box::new(walk(t1, z, c)),
@@ -62,40 +65,8 @@ impl Term {
     }
 }
 
-// <term> ::= <seq>
-// <seq> ::= <app> ";" <seq> | <app>
-// <app>  ::= <atom> <app> | <atom>
-// <atom> ::= <encl> | <abs> | <let> | <if> | <record> | <var> | <unit> | <true> | <false> | <record>
-// <encl> ::= "(" <term> ")"
-// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
-// <let> ::= "let" <bound> "=" <term> "in" <term>
-// <if> ::= "if" <term> "then" <term> "else" <term>
-// <record> ::= "{" <recordinner> "}"
-// <recordinner> ::= <fieldseq> | <notrailing>
-// <notrailing> ::= <fieldseq> <field>
-// <fieldseq> ::= <field> "," <fieldseq> | null
-// <field> ::= <label> "=" <term> | <term>
-// <label> ::= string
-// <bound> ::= string
-// <var> ::= number | string
-// <unit> ::= "unit"
-// <true> ::= "true"
-// <false> ::= "false"
-
-// <type> ::= <tyarr>
-// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-// <tyarrsub> ::= "->" <ty>
-// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord>
-// <tyencl> ::= "(" <type> ")"
-// <tyrecord> ::= "{" <tyrecordinner> "}"
-// <tyrecordinner> ::= <tyfieldseq> | <tynotrailing>
-// <tynotrailing> ::= <tyfieldseq> <tyfield>
-// <tyfieldseq> ::= <tyfield> "," <tyfieldseq> | null
-// <tyfield> ::= <label> ":" <ty> | <ty>
-// <tyunit> ::= "Unit"
-// <tybool> ::= "Bool"
-
-fn parse_string(i: &str) -> IResult<&str, String> {
+/// <ident> ::= <ident> (alphabet|digit) | alphabet
+fn parse_ident(i: &str) -> IResult<&str, String> {
     let (i, s0) = preceded(multispace0, alpha1).parse(i)?;
     let (i, s) = many0(alt((alpha1, digit1))).parse(i)?;
     let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
@@ -111,7 +82,7 @@ fn parse_string(i: &str) -> IResult<&str, String> {
 
 // <tyfield> ::= <label> ":" <ty> | <ty>
 fn parse_tyfield_tywithlabel(i: &str) -> IResult<&str, (Option<String>, Type)> {
-    let (i, label) = preceded(multispace0, parse_string).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
     let (i, _) = preceded(multispace0, char(':')).parse(i)?;
     let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
     Ok((i, (Some(label), ty)))
@@ -228,7 +199,7 @@ fn parse_varnum(i: &str) -> IResult<&str, Term> {
     map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
 }
 fn parse_varstr(i: &str) -> IResult<&str, Term> {
-    let (i, s) = parse_string(i)?;
+    let (i, s) = parse_ident(i)?;
     Ok((i, Term::TmpVar(s)))
 }
 /// <var> ::= number | string
@@ -239,7 +210,7 @@ fn parse_var(i: &str) -> IResult<&str, Term> {
 
 // <field> ::= <label> "=" <term> | <term>
 fn parse_field_twithlabel(i: &str) -> IResult<&str, (Option<String>, Term)> {
-    let (i, label) = preceded(multispace0, parse_string).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
     let (i, _) = preceded(multispace0, char('=')).parse(i)?;
     let (i, term) = preceded(multispace0, parse_term_space).parse(i)?;
     Ok((i, (Some(label), term)))
@@ -309,7 +280,7 @@ fn parse_let(i: &str) -> IResult<&str, Term> {
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
-    let (i, name) = opt(parse_string).parse(i)?;
+    let (i, name) = opt(parse_ident).parse(i)?;
     let (i, _) = preceded(char(':'), multispace0).parse(i)?;
     let (i, ty) = parse_type_space(i)?;
     let (i, t) = preceded(char('.'), parse_term).parse(i)?;
@@ -347,10 +318,25 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     .parse(i)
 }
 
-/// <app> ::= <atom> <app> | <atom>
-fn parse_app(i: &str) -> IResult<&str, Term> {
+// <projection> ::= "." <label>
+fn parse_projection(i: &str) -> IResult<&str, String> {
+    preceded(multispace0, preceded(char('.'), parse_ident)).parse(i)
+}
+
+// <postfix> ::= <atom> <projection> | <atom>
+fn parse_postfix(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_atom.parse(i)?;
-    let (i, rest) = nom::multi::many0(parse_atom).parse(i)?;
+    let (i, rest) = nom::multi::many0(parse_projection).parse(i)?;
+    let t = rest
+        .into_iter()
+        .fold(first, |acc, label| Term::Projection(Box::new(acc), label));
+    Ok((i, t))
+}
+
+// <app> ::= <postfix> <app> | <postfix>
+fn parse_app(i: &str) -> IResult<&str, Term> {
+    let (i, first) = parse_postfix.parse(i)?;
+    let (i, rest) = nom::multi::many0(parse_postfix).parse(i)?;
     let t = rest
         .into_iter()
         .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
