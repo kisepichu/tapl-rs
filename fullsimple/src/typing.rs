@@ -1,6 +1,10 @@
 use rstest::rstest;
 
-use crate::syntax::{context::Context, term::Term, r#type::Type};
+use crate::syntax::{
+    context::Context,
+    term::Term,
+    r#type::{TyField, Type},
+};
 
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
@@ -50,6 +54,19 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Unit => Ok(Type::Unit),
         Term::True => Ok(Type::Bool),
         Term::False => Ok(Type::Bool),
+        Term::Record(fields) => {
+            let tyfields = fields
+                .iter()
+                .map(|field| {
+                    let ty = type_of(ctx, &field.term)?;
+                    Ok(TyField {
+                        label: field.label.clone(),
+                        ty,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(Type::TyRecord(tyfields))
+        }
         Term::If(t1, t2, t3) => {
             let ty1 = type_of(ctx, t1)?;
             let ty2 = type_of(ctx, t2)?;
@@ -83,6 +100,19 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 #[case(r"(\:Bool.(unit;unit;0))true", Some(Type::Bool))]
 #[case(r"true", Some(Type::Bool))]
 #[case(r"false", Some(Type::Bool))]
+#[case(
+    r"{b=(\x:Bool.x)false, if true then unit else unit}",
+    Some(Type::TyRecord(vec![
+        TyField {
+            label: "b".to_string(),
+            ty: Type::Bool,
+        },
+        TyField {
+            label: "1".to_string(),
+            ty: Type::Unit,
+        },
+    ]))
+)]
 #[case(
     r"\:Bool.0",
     Some(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))

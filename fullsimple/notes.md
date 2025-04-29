@@ -18,7 +18,7 @@ $ cargo run --bin fullsimple
 <term> ::= <seq>
 <seq> ::= <app> ";" <seq> | <app>
 <app>  ::= <atom> <app> | <atom>
-<atom> ::= <encl> | <abs> | <let> | <if> | <record> | <var> | <unit> | <true> | <false>
+<atom> ::= <encl> | <abs> | <let> | <if> | <record> | <var> | <unit> | <true> | <false> | <record>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 <let> ::= "let" <bound> "=" <term> "in" <term>
@@ -35,14 +35,15 @@ $ cargo run --bin fullsimple
 <true> ::= "true"
 <false> ::= "false"
 
-<ty> ::= <tyarr>
+<type> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 <tyarrsub> ::= "->" <ty>
-<tyatom> ::= <tyencl> | <tyunit> | <tybool>
+<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord>
 <tyencl> ::= "(" <ty> ")"
 <tyrecord> ::= "{"  "}"
 <tyrecordinner> ::= <tyfieldseq> | <tynotrailing>
 <tynotrailing> ::= <tyfieldseq> <tyfield>
+<tyfieldseq> ::= <tyfield> "," <tyfieldseq> | null
 <tyfield> ::= <label> ":" <ty> | <ty>
 <tyunit> ::= "Unit"
 <tybool> ::= "Bool"
@@ -60,7 +61,6 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
   \quad \mid\ &\{l_i\mathord:T_i,^{i\in1..n}\} &\quad (\text{record}) \\
-  \quad \mid\ &t.l &\quad (\text{projection}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \quad \mid\ &\mathrm{let}\ v_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
   \\
@@ -140,10 +140,6 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \\
 \frac{t_1\rightarrow t_1'}{\mathrm{let}\ t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{let}\ t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-LET}) \\
 \\
-\frac{}{\{l_i\mathord=v_i,^{i\in 1..n}\}.l_j \rightarrow v_j} \quad &(\text{E-PROJRCD}) \\
-\\
-\frac{t_1\rightarrow t_1'}{t_1.l \rightarrow t_1'.l} \quad &(\text{E-PROJ}) \\
-\\
 \frac{t_j\rightarrow t_j'}{\{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j, l_k\mathord=t_k^{k\in j+1..n}\} \rightarrow \{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j', l_k\mathord=t_k^{k\in j+1..n}\}} \quad &(\text{E-RCD}) \\
 \end{align*}
 ```
@@ -171,8 +167,6 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
 \\
 \frac{\forall i, \Gamma \vdash t_i\mathord:T_i}{\Gamma \vdash \{l_i\mathord=t_i,^{i\in 1..n}\}: \{l_i\mathord=T_i,^{i\in 1..n}\}} \quad &\text{(T-RCD)} \\
-\\
-\frac{\Gamma \vdash t_1 \mathord: \{l_i\mathord=T_i,^{i\in 1..n}\}}{\Gamma \vdash t_1.l_j : T_j} \quad &\text{(T-PROJ)} \\
 \\
 \end{align*}
 ```

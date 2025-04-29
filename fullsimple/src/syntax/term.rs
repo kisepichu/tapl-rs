@@ -3,6 +3,12 @@ use std::fmt;
 use super::r#type::Type;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    pub label: String,
+    pub term: Term,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     Var(usize),
     TmpVar(String),
@@ -11,6 +17,7 @@ pub enum Term {
     Unit,
     True,
     False,
+    Record(Vec<Field>),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Box<Term>, Box<Term>),
 }
@@ -38,6 +45,13 @@ impl fmt::Display for Term {
                 Term::Unit => "unit".to_string(),
                 Term::True => "true".to_string(),
                 Term::False => "false".to_string(),
+                Term::Record(fields) => {
+                    let fields_str: Vec<String> = fields
+                        .iter()
+                        .map(|field| format!("{}={}", field.label, p(&field.term, false, false)))
+                        .collect();
+                    format!("{{{}}}", fields_str.join(", "))
+                }
                 Term::If(t1, t2, t3) => format!(
                     "if {} then {} else {}",
                     p(t1, false, false),
@@ -67,9 +81,10 @@ impl fmt::Display for Term {
 
 impl Term {
     pub fn isval(&self) -> bool {
-        matches!(
-            self,
-            Term::Abs(_, _) | Term::Unit | Term::True | Term::False
-        )
+        match self {
+            Term::Unit | Term::True | Term::False | Term::Abs(_, _) => true,
+            Term::Record(fields) => fields.iter().all(|field| field.term.isval()),
+            _ => false,
+        }
     }
 }

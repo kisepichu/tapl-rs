@@ -3,10 +3,17 @@ use std::fmt;
 use rstest::rstest;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TyField {
+    pub label: String,
+    pub ty: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Arr(Box<Type>, Box<Type>),
     Unit,
     Bool,
+    TyRecord(Vec<TyField>),
 }
 
 impl fmt::Display for Type {
@@ -22,6 +29,13 @@ impl fmt::Display for Type {
                 }
                 Type::Unit => "Unit".to_string(),
                 Type::Bool => "Bool".to_string(),
+                Type::TyRecord(fields) => {
+                    let fields_str: Vec<String> = fields
+                        .iter()
+                        .map(|field| format!("{}:{}", field.label, p(&field.ty, false)))
+                        .collect();
+                    format!("{{{}}}", fields_str.join(", "))
+                }
             }
         }
         write!(f, "{}", p(self, false))
