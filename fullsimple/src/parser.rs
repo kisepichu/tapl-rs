@@ -1,13 +1,16 @@
 use std::iter::once;
 
-use crate::syntax::{term::Term, r#type::Type};
+use crate::syntax::{
+    term::{Field, Term},
+    r#type::{TyField, Type},
+};
 use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, char, digit1, multispace0},
     combinator::{map, map_res, opt},
-    multi::{many0, many1},
+    multi::many0,
     sequence::{delimited, preceded},
 };
 
@@ -33,6 +36,19 @@ impl Term {
                 Term::Unit => Term::Unit,
                 Term::True => Term::True,
                 Term::False => Term::False,
+                Term::Record(fields) => {
+                    let fields = fields
+                        .iter()
+                        .map(|field| Field {
+                            label: field.label.clone(),
+                            term: walk(&field.term, z, c),
+                        })
+                        .collect();
+                    Term::Record(fields)
+                }
+                Term::Projection(t, label) => {
+                    Term::Projection(Box::new(walk(t, z, c)), label.clone())
+                }
                 Term::If(t1, t2, t3) => Term::If(
                     Box::new(walk(t1, z, c)),
                     Box::new(walk(t2, z, c)),
@@ -49,30 +65,11 @@ impl Term {
     }
 }
 
-// <term> ::= <seq>
-// <seq> ::= <app> ";" <seq> | <app>
-// <app>  ::= <atom> <app> | <atom>
-// <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
-// <encl> ::= "(" <term> ")"
-// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
-// <let> ::= "let" <bound> "=" <term> "in" <term>
-// <if> ::= "if" <term> "then" <term> "else" <term>
-// <var> ::= number | string
-// <unit> ::= "unit"
-// <true> ::= "true"
-// <false> ::= "false"
-
-// <ty> ::= <tyarr>
-// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-// <tyarrsub> ::= "->" <ty>
-// <tyatom> ::= <tyencl> | <tyunit> | <tybool>
-// <tyencl> ::= "(" <ty> ")"
-// <tyunit> ::= "Unit"
-// <tybool> ::= "Bool"
-
-fn parse_string(i: &str) -> IResult<&str, String> {
-    let (i, s) = many1(alpha1).parse(i)?;
-    let s = s.iter().fold("".to_string(), |acc, c| acc + c);
+/// <ident> ::= <ident> (alphabet|digit) | alphabet
+fn parse_ident(i: &str) -> IResult<&str, String> {
+    let (i, s0) = preceded(multispace0, alpha1).parse(i)?;
+    let (i, s) = many0(alt((alpha1, digit1))).parse(i)?;
+    let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
     if reserved(s.as_str()) {
         Err(nom::Err::Error(nom::error::Error::new(
             i,
@@ -83,13 +80,65 @@ fn parse_string(i: &str) -> IResult<&str, String> {
     }
 }
 
-/// <tyatom> ::= <tyencl> | <tyunit> | <tybool>
+fn parse_number(i: &str) -> IResult<&str, usize> {
+    map_res(digit1, |s: &str| s.parse::<usize>()).parse(i)
+}
+
+// <tyfield> ::= <label> ":" <ty> | <ty>
+fn parse_tyfield_tywithlabel(i: &str) -> IResult<&str, (Option<String>, Type)> {
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, char(':')).parse(i)?;
+    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    Ok((i, (Some(label), ty)))
+}
+fn parse_tyfield_ty(i: &str) -> IResult<&str, (Option<String>, Type)> {
+    let (i, ty) = parse_type_space.parse(i)?;
+    Ok((i, (None, ty)))
+}
+fn parse_tyfield(i: &str) -> IResult<&str, (Option<String>, Type)> {
+    alt((parse_tyfield_tywithlabel, parse_tyfield_ty)).parse(i)
+}
+fn parse_tyfield_withcomma(i: &str) -> IResult<&str, (Option<String>, Type)> {
+    let (i, p) = parse_tyfield.parse(i)?;
+    let (i, _) = char(',').parse(i)?;
+    Ok((i, p))
+}
+
+/// <tyfieldseq> ::= <tyfield> "," <tyfieldseq> | null
+fn parse_tyfieldseq(i: &str) -> IResult<&str, Vec<TyField>> {
+    let (i, fields) = many0(parse_tyfield_withcomma).parse(i)?;
+    let (i, last_field) = opt(parse_tyfield).parse(i)?;
+    let fields = fields
+        .into_iter()
+        .chain(last_field)
+        .enumerate()
+        .map(|(idx, (label, ty))| TyField {
+            label: label.unwrap_or(idx.to_string()),
+            ty,
+        })
+        .collect();
+    Ok((i, fields))
+}
+
+/// <tyrecord> ::= "{" <tyrecordinner> "}"
+fn parse_tyrecord(i: &str) -> IResult<&str, Type> {
+    let (i, fields) = delimited(
+        preceded(multispace0, char('{')),
+        preceded(multispace0, parse_tyfieldseq),
+        preceded(multispace0, char('}')),
+    )
+    .parse(i)?;
+    Ok((i, Type::TyRecord(fields)))
+}
+
+/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord>
 fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     preceded(
         multispace0,
         alt((
             map(tag("Bool"), |_| Type::Bool),
             map(tag("Unit"), |_| Type::Unit),
+            parse_tyrecord,
             parse_tyencl,
         )),
     )
@@ -98,13 +147,13 @@ fn parse_tyatom(i: &str) -> IResult<&str, Type> {
 
 /// <tyencl> ::= "(" <ty> ")"
 fn parse_tyencl(i: &str) -> IResult<&str, Type> {
-    delimited(char('('), parse_ty_space, char(')')).parse(i)
+    delimited(char('('), parse_type_space, char(')')).parse(i)
 }
 
 /// <tyarrsub> ::= "->" <ty>
 fn parse_tyarrsub(i: &str) -> IResult<&str, Type> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
-    preceded(multispace0, parse_ty_space).parse(i)
+    preceded(multispace0, parse_type_space).parse(i)
 }
 
 /// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
@@ -124,12 +173,12 @@ fn parse_tyarr(i: &str) -> IResult<&str, Type> {
 }
 
 /// <ty> ::= <tyarr>
-fn parse_ty(i: &str) -> IResult<&str, Type> {
+fn parse_type(i: &str) -> IResult<&str, Type> {
     parse_tyarr(i)
 }
 
-fn parse_ty_space(i: &str) -> IResult<&str, Type> {
-    let (i, t) = parse_ty(i)?;
+fn parse_type_space(i: &str) -> IResult<&str, Type> {
+    let (i, t) = parse_type(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, t))
 }
@@ -149,17 +198,65 @@ fn parse_unit(i: &str) -> IResult<&str, Term> {
     map(tag("unit"), |_| Term::Unit).parse(i)
 }
 
-/// <var> ::= number | string
+// <var> ::= number | string
 fn parse_varnum(i: &str) -> IResult<&str, Term> {
-    map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
+    map(parse_number, Term::Var).parse(i)
 }
 fn parse_varstr(i: &str) -> IResult<&str, Term> {
-    let (i, s) = parse_string(i)?;
+    let (i, s) = parse_ident(i)?;
     Ok((i, Term::TmpVar(s)))
 }
+/// <var> ::= number | string
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
     Ok((i, v))
+}
+
+// <field> ::= <label> "=" <term> | <term>
+fn parse_field_twithlabel(i: &str) -> IResult<&str, (Option<String>, Term)> {
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, char('=')).parse(i)?;
+    let (i, term) = preceded(multispace0, parse_term_space).parse(i)?;
+    Ok((i, (Some(label), term)))
+}
+fn parse_field_t(i: &str) -> IResult<&str, (Option<String>, Term)> {
+    let (i, t) = parse_term_space.parse(i)?;
+    Ok((i, (None, t)))
+}
+fn parse_field(i: &str) -> IResult<&str, (Option<String>, Term)> {
+    alt((parse_field_twithlabel, parse_field_t)).parse(i)
+}
+fn parse_field_withcomma(i: &str) -> IResult<&str, (Option<String>, Term)> {
+    let (i, p) = parse_field.parse(i)?;
+    let (i, _) = char(',').parse(i)?;
+    Ok((i, p))
+}
+
+// <fieldseq> ::= <field> "," <fieldseq> | null
+fn parse_fieldseq(i: &str) -> IResult<&str, Vec<Field>> {
+    let (i, fields) = many0(parse_field_withcomma).parse(i)?;
+    let (i, last_field) = opt(parse_field).parse(i)?;
+    let fields = fields
+        .into_iter()
+        .chain(last_field)
+        .enumerate()
+        .map(|(idx, (label, term))| Field {
+            label: label.unwrap_or(idx.to_string()),
+            term,
+        })
+        .collect();
+    Ok((i, fields))
+}
+
+// <record> ::= "{" <recordinner> "}"
+fn parse_record(i: &str) -> IResult<&str, Term> {
+    let (i, fields) = delimited(
+        preceded(multispace0, char('{')),
+        preceded(multispace0, parse_fieldseq),
+        preceded(multispace0, char('}')),
+    )
+    .parse(i)?;
+    Ok((i, Term::Record(fields)))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
@@ -187,9 +284,9 @@ fn parse_let(i: &str) -> IResult<&str, Term> {
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
-    let (i, name) = opt(parse_string).parse(i)?;
-    let (i, _) = preceded(char(':'), multispace0).parse(i)?;
-    let (i, ty) = parse_ty_space(i)?;
+    let (i, name) = opt(parse_ident).parse(i)?;
+    let (i, _) = preceded(preceded(multispace0, char(':')), multispace0).parse(i)?;
+    let (i, ty) = parse_type_space(i)?;
     let (i, t) = preceded(char('.'), parse_term).parse(i)?;
 
     match name {
@@ -206,13 +303,14 @@ fn parse_encl(i: &str) -> IResult<&str, Term> {
     delimited(char('('), parse_term_space, char(')')).parse(i)
 }
 
-/// <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false>
+/// <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false> | <record>
 fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
             parse_let,
             parse_if,
+            parse_record,
             parse_false,
             parse_true,
             parse_unit,
@@ -224,10 +322,39 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     .parse(i)
 }
 
-/// <app> ::= <atom> <app> | <atom>
-fn parse_app(i: &str) -> IResult<&str, Term> {
+// <projection> ::= "." <label>
+fn parse_projection(i: &str) -> IResult<&str, String> {
+    preceded(
+        multispace0,
+        preceded(preceded(char('.'), multispace0), parse_ident),
+    )
+    .parse(i)
+}
+fn parse_projection_number(i: &str) -> IResult<&str, String> {
+    preceded(
+        multispace0,
+        preceded(
+            preceded(char('.'), multispace0),
+            map(parse_number, |n| n.to_string()),
+        ),
+    )
+    .parse(i)
+}
+
+// <postfix> ::= <atom> <projection> | <atom>
+fn parse_postfix(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_atom.parse(i)?;
-    let (i, rest) = nom::multi::many0(parse_atom).parse(i)?;
+    let (i, rest) = nom::multi::many0(alt((parse_projection, parse_projection_number))).parse(i)?;
+    let t = rest
+        .into_iter()
+        .fold(first, |acc, label| Term::Projection(Box::new(acc), label));
+    Ok((i, t))
+}
+
+// <app> ::= <postfix> <app> | <postfix>
+fn parse_app(i: &str) -> IResult<&str, Term> {
+    let (i, first) = parse_postfix.parse(i)?;
+    let (i, rest) = nom::multi::many0(parse_postfix).parse(i)?;
     let t = rest
         .into_iter()
         .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));

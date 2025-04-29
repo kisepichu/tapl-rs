@@ -1,6 +1,6 @@
 use num::FromPrimitive;
 
-use crate::syntax::term::Term;
+use crate::syntax::term::{Field, Term};
 
 impl Term {
     pub fn shift(&self, d: isize) -> Result<Term, String> {
@@ -24,6 +24,22 @@ impl Term {
                 Term::Unit => Ok(Term::Unit),
                 Term::True => Ok(Term::True),
                 Term::False => Ok(Term::False),
+                Term::Record(fields) => {
+                    let fields = fields
+                        .iter()
+                        .map(|field| {
+                            Ok::<Field, String>(Field {
+                                label: field.label.clone(),
+                                term: walk(&field.term, d, c)?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    Ok(Term::Record(fields))
+                }
+                Term::Projection(t, label) => {
+                    Ok(Term::Projection(Box::new(walk(t, d, c)?), label.clone()))
+                }
                 Term::If(t1, t2, t3) => Ok(Term::If(
                     Box::new(walk(t1, d, c)?),
                     Box::new(walk(t2, d, c)?),
@@ -58,6 +74,22 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
             Term::Unit => Ok(Term::Unit),
             Term::True => Ok(Term::True),
             Term::False => Ok(Term::False),
+            Term::Record(fields) => {
+                let fields = fields
+                    .iter()
+                    .map(|field| {
+                        Ok::<Field, String>(Field {
+                            label: field.label.clone(),
+                            term: walk(j, s, c, &field.term)?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(Term::Record(fields))
+            }
+            Term::Projection(t, label) => {
+                Ok(Term::Projection(Box::new(walk(j, s, c, t)?), label.clone()))
+            }
             Term::If(t1, t2, t3) => Ok(Term::If(
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c, t2)?),
@@ -83,6 +115,38 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (v1, t2) if v1.isval() => Term::App(Box::new(v1.clone()), Box::new(eval1(t2)?)),
             _ => Term::App(Box::new(eval1(t1)?), t2.clone()),
         }),
+        Term::Record(fields) if !t.isval() => {
+            let fields = fields
+                .iter()
+                .map(|field| -> Result<_, _> {
+                    Ok::<Field, String>(Field {
+                        label: field.label.clone(),
+                        term: if field.term.isval() {
+                            Ok(field.term.clone())
+                        } else {
+                            eval1(&field.term)
+                        }?,
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(Term::Record(fields))
+        }
+        Term::Projection(t, label) => {
+            if t.isval() {
+                if let Term::Record(fields) = &**t {
+                    if let Some(field) = fields.iter().find(|f| f.label == *label) {
+                        Ok(field.term.clone())
+                    } else {
+                        Err(format!("internal error: undefined label: {}", label))
+                    }
+                } else {
+                    Err(format!("internal error: expected Record: {}", t))
+                }
+            } else {
+                Ok(Term::Projection(Box::new(eval1(t)?), label.clone()))
+            }
+        }
         Term::If(t1, t2, t3) => Ok(match (&**t1, &**t2, &**t3) {
             (Term::True, t2, _) => t2.clone(),
             (Term::False, _, t3) => t3.clone(),

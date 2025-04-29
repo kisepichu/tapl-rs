@@ -26,14 +26,14 @@ fn main() -> Result<()> {
                         "                                                   : Bool->Bool->Bool"
                     );
                     println!("     ->* \\:Bool.\\:Bool.1");
-                    println!("Ctrl+C to exit");
+                    println!("Ctrl+C to exit\n");
                     continue;
                 }
 
                 let t = match parser::parse(line.as_str()) {
                     Ok(t) => t,
                     Err(e) => {
-                        println!("{}", e);
+                        println!("{}\n", e);
                         continue;
                     }
                 };
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
                     Ok(ty) => ty,
                     Err(e) => {
                         println!("input= {}", t);
-                        println!("{}", e);
+                        println!("{}\n", e);
                         continue;
                     }
                 };
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
-                        println!("eval error: {}", e);
+                        println!("eval error: {}\n", e);
                         continue;
                     }
                 };

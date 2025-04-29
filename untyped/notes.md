@@ -1,4 +1,4 @@
-# Untyped lambda calculus ($\lambda$)
+# Untyped lambda calculus
 
 ```
 cargo run --bin untyped

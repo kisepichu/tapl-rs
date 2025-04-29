@@ -1,6 +1,10 @@
 use rstest::rstest;
 
-use crate::syntax::{context::Context, term::Term, r#type::Type};
+use crate::syntax::{
+    context::Context,
+    term::Term,
+    r#type::{TyField, Type},
+};
 
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
@@ -16,10 +20,10 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             "type check failed: {}\n: undefined variable: {}",
             t, s
         )),
-        Term::Abs(ty, t2) => {
-            let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of(&ctx, t2)?;
-            Ok(Type::Arr(Box::new(ty.clone()), Box::new(ty2.clone())))
+        Term::Abs(ty1, t2) => {
+            let ctx_ = ctx.clone().shift_and_push0(ty1.clone());
+            let ty2 = type_of(&ctx_, t2)?;
+            Ok(Type::Arr(Box::new(ty1.clone()), Box::new(ty2.clone())))
         }
         Term::App(t1, t2) => {
             let ty1 = type_of(ctx, t1)?;
@@ -50,6 +54,39 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Unit => Ok(Type::Unit),
         Term::True => Ok(Type::Bool),
         Term::False => Ok(Type::Bool),
+        Term::Record(fields) => {
+            let tyfields = fields
+                .iter()
+                .map(|field| {
+                    let ty = type_of(ctx, &field.term)?;
+                    Ok(TyField {
+                        label: field.label.clone(),
+                        ty,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(Type::TyRecord(tyfields))
+        }
+        Term::Projection(t1, label) => {
+            let ty1 = type_of(ctx, t1)?;
+            if let Type::TyRecord(fields) = ty1.clone() {
+                fields
+                    .iter()
+                    .find(|field| field.label == *label)
+                    .map(|field| field.ty.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "type check failed: {}\n  field {} not found in record type {}",
+                            t, label, ty1
+                        )
+                    })
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected record type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
         Term::If(t1, t2, t3) => {
             let ty1 = type_of(ctx, t1)?;
             let ty2 = type_of(ctx, t2)?;
@@ -70,8 +107,8 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         }
         Term::Let(t1, t2) => {
             let ty1 = type_of(ctx, t1)?;
-            let ctx = ctx.clone().push(ty1);
-            type_of(&ctx, t2)
+            let ctx_ = ctx.clone().shift_and_push0(ty1);
+            type_of(&ctx_, t2)
         }
     }
 }
@@ -83,6 +120,19 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 #[case(r"(\:Bool.(unit;unit;0))true", Some(Type::Bool))]
 #[case(r"true", Some(Type::Bool))]
 #[case(r"false", Some(Type::Bool))]
+#[case(
+    r"{b=(\x:Bool.x)false, if true then unit else unit}",
+    Some(Type::TyRecord(vec![
+        TyField {
+            label: "b".to_string(),
+            ty: Type::Bool,
+        },
+        TyField {
+            label: "1".to_string(),
+            ty: Type::Unit,
+        },
+    ]))
+)]
 #[case(
     r"\:Bool.0",
     Some(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
