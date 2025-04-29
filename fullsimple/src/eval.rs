@@ -118,15 +118,17 @@ fn eval1(t: &Term) -> Result<Term, String> {
         Term::Record(fields) if !t.isval() => {
             let fields = fields
                 .iter()
-                .map(|field| Field {
-                    label: field.label.clone(),
-                    term: if field.term.isval() {
-                        field.term.clone()
-                    } else {
-                        eval1(&field.term).unwrap_or(field.term.clone())
-                    },
+                .map(|field| -> Result<_, _> {
+                    Ok::<Field, String>(Field {
+                        label: field.label.clone(),
+                        term: if field.term.isval() {
+                            Ok(field.term.clone())
+                        } else {
+                            eval1(&field.term)
+                        }?,
+                    })
                 })
-                .collect::<Vec<Field>>();
+                .collect::<Result<Vec<_>, _>>()?;
 
             Ok(Term::Record(fields))
         }

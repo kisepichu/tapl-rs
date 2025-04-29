@@ -80,6 +80,10 @@ fn parse_ident(i: &str) -> IResult<&str, String> {
     }
 }
 
+fn parse_number(i: &str) -> IResult<&str, usize> {
+    map_res(digit1, |s: &str| s.parse::<usize>()).parse(i)
+}
+
 // <tyfield> ::= <label> ":" <ty> | <ty>
 fn parse_tyfield_tywithlabel(i: &str) -> IResult<&str, (Option<String>, Type)> {
     let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
@@ -196,7 +200,7 @@ fn parse_unit(i: &str) -> IResult<&str, Term> {
 
 // <var> ::= number | string
 fn parse_varnum(i: &str) -> IResult<&str, Term> {
-    map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
+    map(parse_number, Term::Var).parse(i)
 }
 fn parse_varstr(i: &str) -> IResult<&str, Term> {
     let (i, s) = parse_ident(i)?;
@@ -281,7 +285,7 @@ fn parse_let(i: &str) -> IResult<&str, Term> {
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
     let (i, name) = opt(parse_ident).parse(i)?;
-    let (i, _) = preceded(char(':'), multispace0).parse(i)?;
+    let (i, _) = preceded(preceded(multispace0, char(':')), multispace0).parse(i)?;
     let (i, ty) = parse_type_space(i)?;
     let (i, t) = preceded(char('.'), parse_term).parse(i)?;
 
@@ -320,13 +324,27 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
 
 // <projection> ::= "." <label>
 fn parse_projection(i: &str) -> IResult<&str, String> {
-    preceded(multispace0, preceded(char('.'), parse_ident)).parse(i)
+    preceded(
+        multispace0,
+        preceded(preceded(char('.'), multispace0), parse_ident),
+    )
+    .parse(i)
+}
+fn parse_projection_number(i: &str) -> IResult<&str, String> {
+    preceded(
+        multispace0,
+        preceded(
+            preceded(char('.'), multispace0),
+            map(parse_number, |n| n.to_string()),
+        ),
+    )
+    .parse(i)
 }
 
 // <postfix> ::= <atom> <projection> | <atom>
 fn parse_postfix(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_atom.parse(i)?;
-    let (i, rest) = nom::multi::many0(parse_projection).parse(i)?;
+    let (i, rest) = nom::multi::many0(alt((parse_projection, parse_projection_number))).parse(i)?;
     let t = rest
         .into_iter()
         .fold(first, |acc, label| Term::Projection(Box::new(acc), label));
