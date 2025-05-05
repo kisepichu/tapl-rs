@@ -129,7 +129,6 @@ fn eval1(t: &Term) -> Result<Term, String> {
                     })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-
             Ok(Term::Record(fields))
         }
         Term::Projection(t, label) => {

@@ -25,8 +25,9 @@ $ cargo run --bin fullsimple
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 <let> ::= "let" <bound> "=" <term> "in" <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
-<record> ::= "{" <recordinner> "}"
-<recordinner> ::= <fieldseq> | <notrailing>
+<tagging> ::= "<" <field> ">"
+<record> ::= "{" <inner> "}"
+<inner> ::= <fieldseq> | <notrailing>
 <notrailing> ::= <fieldseq> <field>
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
@@ -43,8 +44,9 @@ $ cargo run --bin fullsimple
 <tyarrsub> ::= "->" <ty>
 <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord>
 <tyencl> ::= "(" <ty> ")"
-<tyrecord> ::= "{"  "}"
-<tyrecordinner> ::= <tyfieldseq> | <tynotrailing>
+<tytagging>::= "<" <tyinner> ">"
+<tyrecord> ::= "{" <tyinner> "}"
+<tyinner> ::= <tyfieldseq> | <tynotrailing>
 <tynotrailing> ::= <tyfieldseq> <tyfield>
 <tyfieldseq> ::= <tyfield> "," <tyfieldseq> | null
 <tyfield> ::= <label> ":" <ty> | <ty>
@@ -67,6 +69,9 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &t.l &\quad (\text{projection}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \quad \mid\ &\mathrm{let}\ v_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
+  \quad \mid\ & \langle l\mathord=t\rangle\ \mathrm{as}\ T &\quad (\text{tagging}) \\
+  \quad \mid\ & \mathrm{case}\ t\ \mathrm{of}\ \langle l_i\mathord=v_i\rangle \Rightarrow t_i^{i\in 1..n} &\quad (\text{case}) \\
+  \\
   \\
 
 % p ::=&   &\quad (\text{patterns}) \\
@@ -80,6 +85,7 @@ v ::=&   &\quad (\text{values}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
   \quad \mid\ &\{l_i\mathord=v_i,^{i\in1..n}\} &\quad (\text{record value}) \\
+  \quad \mid\ & \langle l\mathord=v\rangle\ \mathrm{as}\ T &\quad (\text{tagging value}) \\
   \\
 
 T ::=&   &\quad (\text{types}) \\
@@ -87,6 +93,7 @@ T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &\mathrm{Unit} &\quad (\text{unit type}) \\
   \quad \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
   \quad \mid\ &\{l_i\mathord:T_i,^{i\in1..n}\} &\quad (\text{record type}) \\
+  \quad \mid\ & \langle l_i\mathord:T_i,^{i \in 1..n}\rangle &\quad (\text{variant type}) \\
   \\
 
 \Gamma ::=&   &\quad (\text{contexts}) \\
@@ -95,7 +102,7 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-- contexts の定義を本文と変えている。 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする。これにより、評価規則や(T-VAR 以外の)型付け規則中の $x$ を全て $0$ に固定できる。しかしこの先に出てくる要素でこの方法で形式化できなくなるかもしれないので様子見。
+- contexts の定義を本文と変えている。 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする(独自の記法、このような表し方の情報求む)。本文では名無し項を使うのを(少なくとも抽象構文上の想定では)辞めているが、こうすることで評価規則や(T-VAR 以外の)型付け規則中の $x$ を消去できて、名無し項のまま抽象構文で表せて、そのまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
 
 ### Derived forms
 

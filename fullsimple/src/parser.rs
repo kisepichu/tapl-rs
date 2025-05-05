@@ -120,7 +120,7 @@ fn parse_tyfieldseq(i: &str) -> IResult<&str, Vec<TyField>> {
     Ok((i, fields))
 }
 
-/// <tyrecord> ::= "{" <tyrecordinner> "}"
+/// <tyrecord> ::= "{" <tyinner> "}"
 fn parse_tyrecord(i: &str) -> IResult<&str, Type> {
     let (i, fields) = delimited(
         preceded(multispace0, char('{')),
@@ -131,13 +131,25 @@ fn parse_tyrecord(i: &str) -> IResult<&str, Type> {
     Ok((i, Type::TyRecord(fields)))
 }
 
-/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord>
+/// <tytagging>::= "<" <tyinner> ">"
+fn parse_tytagging(i: &str) -> IResult<&str, Type> {
+    let (i, fields) = delimited(
+        preceded(multispace0, char('<')),
+        preceded(multispace0, parse_tyfieldseq),
+        preceded(multispace0, char('>')),
+    )
+    .parse(i)?;
+    Ok((i, Type::TyRecord(fields)))
+}
+
+/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging>
 fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     preceded(
         multispace0,
         alt((
             map(tag("Bool"), |_| Type::Bool),
             map(tag("Unit"), |_| Type::Unit),
+            parse_tytagging,
             parse_tyrecord,
             parse_tyencl,
         )),
@@ -248,7 +260,7 @@ fn parse_fieldseq(i: &str) -> IResult<&str, Vec<Field>> {
     Ok((i, fields))
 }
 
-// <record> ::= "{" <recordinner> "}"
+// <record> ::= "{" <inner> "}"
 fn parse_record(i: &str) -> IResult<&str, Term> {
     let (i, fields) = delimited(
         preceded(multispace0, char('{')),
@@ -257,6 +269,25 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
     )
     .parse(i)?;
     Ok((i, Term::Record(fields)))
+}
+
+/// <tagging> ::= "<" <field> ">"
+fn parse_tagging(i: &str) -> IResult<&str, Term> {
+    let (i, field) = delimited(
+        preceded(multispace0, char('<')),
+        preceded(multispace0, parse_field),
+        preceded(multispace0, char('>')),
+    )
+    .parse(i)?;
+    let label = field.0.ok_or(nom::Err::Error(nom::error::Error::new(
+        i,
+        nom::error::ErrorKind::Fail,
+    )))?; // todo fix, consider what to do when label is None unlike returning error
+    let field = Field {
+        label,
+        term: field.1,
+    };
+    Ok((i, Term::Tagging(Box::new(field))))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
