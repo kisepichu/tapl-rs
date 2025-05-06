@@ -20,17 +20,19 @@ $ cargo run --bin fullsimple
 <app>  ::= <postfix> <app> | <postfix>
 <postfix> ::= <atom> <projection> | <atom>
 <projection> ::= "." <label>
-<atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false> | <record>
+<atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
-<let> ::= "let" <bound> "=" <term> "in" <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
-<tagging> ::= "<" <field> ">"
+<let> ::= "let" <bound> "=" <term> "in" <term>
+<case> ::= "case" <term> "of" <branches>
+<branches> ::= "|" <pat> "=>" <term> <branches> | null
 <record> ::= "{" <inner> "}"
 <inner> ::= <fieldseq> | <notrailing>
 <notrailing> ::= <fieldseq> <field>
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
+<tagging> ::= <ty> ":::" <label>
 <label> ::= <ident>
 <bound> ::= <ident>
 <var> ::= number | <ident>
@@ -38,6 +40,14 @@ $ cargo run --bin fullsimple
 <true> ::= "true"
 <false> ::= "false"
 <ident> ::= <ident> (alphabet|digit) | alphabet
+
+<pat> ::= <bound> ":" <ty> | <patrecord> | <pattagging>
+<patrecord> ::= "{" <patinner> "}"
+<patinner> ::= <patfieldseq> | <patnotrailing>
+<patnotrailing> ::= <patfieldseq> <patfield>
+<patfieldseq> ::= <patfield> "," <patfieldseq> | null
+<patfield> ::= <label> ":" <pat> | <pat>
+<pattagging> ::= <ty> ":::" <label> | <pattagging> <pat>
 
 <type> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
@@ -70,8 +80,8 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &t.l &\quad (\text{projection}) \\
   \quad \mid\ & T\mathord{:::}l &\quad (\text{tagging}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
-  \quad \mid\ &\mathrm{let}\ v_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
-  \quad \mid\ &\mathrm{plet}\ p = v_1\ \mathrm{in}\ t_2 &\quad (\text{pattern let}) \\
+  \quad \mid\ &\mathrm{let}\ t_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
+  \quad \mid\ &\mathrm{plet}\ p = t_1\ \mathrm{in}\ t_2 &\quad (\text{pattern let}) \\
   \quad \mid\ & \mathrm{case}\ t\ \mathrm{of} \ p_i \Rightarrow t_i \ ^{i\in 1..n} &\quad (\text{case}) \\
   \\
   \\
@@ -113,6 +123,7 @@ T ::=&   &\quad (\text{types}) \\
 ```
 
 - contexts の定義を本文と変えている。 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする(独自の記法、このような表し方の情報求む)。本文では名無し項を使うのを(少なくとも抽象構文上の想定では)辞めているが、こうすることで評価規則や(T-VAR 以外の)型付け規則中の $x$ を消去できて、名無し項のまま抽象構文で表せて、そのまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
+- この段階では、 record のフィールドの順序の違いを区別する。11.8(p.99)
 
 ### Derived forms
 

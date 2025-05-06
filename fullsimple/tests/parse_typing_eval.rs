@@ -71,12 +71,17 @@ true
 )]
 #[case(
     r" ( \ r : { b : Bool , a : Unit } . r . b ) { a = unit ,  b = false } ",
+    None,
+    None
+)]
+#[case(
+    r" ( \ r : { a : Unit , b : Bool } . r . b ) { a = unit ,  b = false } ",
     Some(r"Bool"),
     Some(r"false")
 )]
 #[case(
     r"
-let f = \:{cool:Bool, cute:Bool, f:Bool->Bool, Bool}.
+let f = \:{f:Bool->Bool, cool:Bool, cute:Bool, Bool}.
   if 0.cool then
     if 0.cute then
       0.f false

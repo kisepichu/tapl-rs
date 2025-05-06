@@ -2,6 +2,8 @@ use rstest::rstest;
 
 use crate::syntax::{
     context::Context,
+    pattern::Pattern,
+    pattype::PatType,
     term::Term,
     r#type::{TyField, Type},
 };
@@ -109,6 +111,50 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             let ty1 = type_of(ctx, t1)?;
             let ctx_ = ctx.clone().shift_and_push0(ty1);
             type_of(&ctx_, t2)
+        }
+        Term::Plet(_p, _t1, _t2) => {
+            todo!()
+        }
+        Term::Tagging(_ty, _label) => {
+            todo!()
+        }
+        Term::Case(_t1, _bs) => {
+            todo!()
+        }
+    }
+}
+
+fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
+    match p {
+        Pattern::Var(xs, ty) => {
+            let ctx_ = ctx.clone().shift_and_push0(ty.clone());
+            Ok(PatType {
+                ty: ty.clone(),
+                add: 1,
+                context: ctx_,
+            })
+        }
+        Pattern::Record(patfields) => {
+            let mut tyfields: Vec<TyField> = vec![];
+            let mut add = 0;
+            let mut ctx_ = ctx.clone();
+            for pf in patfields {
+                let ty = pat_type_of(&ctx_, &pf.pat)?;
+                tyfields.push(TyField {
+                    label: pf.label.clone(),
+                    ty: ty.ty.clone(),
+                });
+                ctx_ = ctx_.shift_and_push0(ty.ty);
+                add += ty.add;
+            }
+            Ok(PatType {
+                ty: Type::TyRecord(tyfields),
+                add,
+                context: ctx_,
+            })
+        }
+        Pattern::Tagging(_ty, _label, _ps) => {
+            todo!()
         }
     }
 }

@@ -1,32 +1,41 @@
-// use std::fmt;
+use std::fmt;
 
-// #[derive(Debug, Clone, PartialEq)]
-// pub struct PatField {
-//     pub label: String,
-//     pub pat: Pattern,
-// }
-// #[derive(Debug, Clone, PartialEq)]
-// pub enum Pattern {
-//     Var(usize),
-//     TmpVar(String),
-//     PatRecord(Vec<PatField>),
-// }
+use super::r#type::Type;
 
-// impl fmt::Display for Pattern {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         fn p(pat: &Pattern) -> String {
-//             match pat {
-//                 Pattern::Var(x) => format!("{}", x),
-//                 Pattern::TmpVar(x) => x.to_string(),
-//                 Pattern::PatRecord(fields) => {
-//                     let fields_str: Vec<String> = fields
-//                         .iter()
-//                         .map(|field| format!("{}={}", field.label, p(&field.pat)))
-//                         .collect();
-//                     format!("{{{}}}", fields_str.join(", "))
-//                 }
-//             }
-//         }
-//         write!(f, "{}", p(self))
-//     }
-// }
+#[derive(Debug, Clone, PartialEq)]
+pub struct PatField {
+    pub label: String,
+    pub pat: Pattern,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Var(String, Type),
+    Record(Vec<PatField>),
+    Tagging(Type, String, Vec<Pattern>),
+}
+
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn p(pat: &Pattern) -> String {
+            match pat {
+                Pattern::Var(x, ty) => format!("{}:{}", x, ty),
+                Pattern::Record(fields) => {
+                    let fields_str: Vec<String> = fields
+                        .iter()
+                        .map(|field| format!("{}={}", field.label, p(&field.pat)))
+                        .collect();
+                    format!("{{{}}}", fields_str.join(", "))
+                }
+                Pattern::Tagging(ty, l, ps) => {
+                    let ps_str = ps
+                        .iter()
+                        .map(|p| format!(" {}", p))
+                        .collect::<Vec<_>>()
+                        .join("");
+                    format!("{}:::{}{}", ty, l, ps_str)
+                }
+            }
+        }
+        write!(f, "{}", p(self))
+    }
+}

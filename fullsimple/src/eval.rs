@@ -49,6 +49,15 @@ impl Term {
                     Box::new(walk(t1, d, c)?),
                     Box::new(walk(t2, d, c + 1)?),
                 )),
+                Term::Plet(pat, t1, t2) => Ok(Term::Plet(
+                    pat.clone(),
+                    Box::new(walk(t1, d, c)?),
+                    Box::new(walk(t2, d, c + 1)?),
+                )),
+                Term::Tagging(ty, label) => Ok(Term::Tagging(ty.clone(), label.clone())),
+                Term::Case(_t, _branches) => {
+                    todo!()
+                }
             }
         }
         walk(self, d, 0)
@@ -99,6 +108,15 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c + 1, t2)?),
             )),
+            Term::Plet(_pat, _t1, _t2) => {
+                todo!()
+            }
+            Term::Tagging(_ty, _label) => {
+                todo!()
+            }
+            Term::Case(_t, _branches) => {
+                todo!()
+            }
         }
     }
     walk(j, s, 0, t)

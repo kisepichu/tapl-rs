@@ -1,6 +1,7 @@
 use std::iter::once;
 
 use crate::syntax::{
+    pattern::{PatField, Pattern},
     term::{Field, Term},
     r#type::{TyField, Type},
 };
@@ -58,6 +59,13 @@ impl Term {
                     let t1 = walk(t1, z, c);
                     let t2 = walk(t2, z, c + 1);
                     Term::Let(Box::new(t1), Box::new(t2))
+                }
+                Term::Plet(_pat, _t1, _t2) => {
+                    todo!()
+                }
+                Term::Tagging(ty, label) => Term::Tagging(ty.clone(), label.clone()),
+                Term::Case(_t, _branches) => {
+                    todo!()
                 }
             }
         }
@@ -139,7 +147,7 @@ fn parse_tytagging(i: &str) -> IResult<&str, Type> {
         preceded(multispace0, char('>')),
     )
     .parse(i)?;
-    Ok((i, Type::TyRecord(fields)))
+    Ok((i, Type::TyTagging(fields)))
 }
 
 /// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging>
@@ -193,6 +201,75 @@ fn parse_type_space(i: &str) -> IResult<&str, Type> {
     let (i, t) = parse_type(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, t))
+}
+
+/// <pattagging> ::= <ty> ":::" <label> | <pattagging> <pat>
+fn parse_pattagging(i: &str) -> IResult<&str, Pattern> {
+    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, patterns) = many0(preceded(multispace0, parse_pat)).parse(i)?;
+    Ok((i, Pattern::Tagging(ty, label, patterns)))
+}
+
+/// <patfield> ::= <label> ":" <pat> | <pat>
+fn parse_patfield_patwithlabel(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, char(':')).parse(i)?;
+    let (i, pat) = preceded(multispace0, parse_pat).parse(i)?;
+    Ok((i, (Some(label), pat)))
+}
+fn parse_patfield_pat(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+    let (i, pat) = parse_pat.parse(i)?;
+    Ok((i, (None, pat)))
+}
+fn parse_patfield(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+    alt((parse_patfield_patwithlabel, parse_patfield_pat)).parse(i)
+}
+fn parse_patfield_withcomma(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+    let (i, p) = parse_patfield.parse(i)?;
+    let (i, _) = char(',').parse(i)?;
+    Ok((i, p))
+}
+
+/// <patfieldseq> ::= <patfield> "," <patfieldseq> | null
+fn parse_patfieldseq(i: &str) -> IResult<&str, Vec<PatField>> {
+    let (i, fields) = many0(parse_patfield_withcomma).parse(i)?;
+    let (i, last_field) = opt(parse_patfield).parse(i)?;
+    let fields = fields
+        .into_iter()
+        .chain(last_field)
+        .enumerate()
+        .map(|(idx, (label, pat))| PatField {
+            label: label.unwrap_or(idx.to_string()),
+            pat,
+        })
+        .collect();
+    Ok((i, fields))
+}
+
+/// <patrecord> ::= "{" <patinner> "}"
+fn parse_patrecord(i: &str) -> IResult<&str, Pattern> {
+    let (i, fields) = delimited(
+        preceded(multispace0, char('{')),
+        preceded(multispace0, parse_patfieldseq),
+        preceded(multispace0, char('}')),
+    )
+    .parse(i)?;
+    Ok((i, Pattern::Record(fields)))
+}
+
+/// <pat> ::= <bound> ":" <ty> | <patrecord> | <pattagging>
+fn parse_pat(i: &str) -> IResult<&str, Pattern> {
+    preceded(
+        multispace0,
+        alt((
+            map(parse_ident, |s| Pattern::Var(s, Type::TySelf)),
+            parse_pattagging,
+            parse_patrecord,
+        )),
+    )
+    .parse(i)
 }
 
 /// <false> ::= "false"
@@ -271,23 +348,12 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::Record(fields)))
 }
 
-/// <tagging> ::= "<" <field> ">"
+/// <tagging> ::= <ty> ":::" <label>
 fn parse_tagging(i: &str) -> IResult<&str, Term> {
-    let (i, field) = delimited(
-        preceded(multispace0, char('<')),
-        preceded(multispace0, parse_field),
-        preceded(multispace0, char('>')),
-    )
-    .parse(i)?;
-    let label = field.0.ok_or(nom::Err::Error(nom::error::Error::new(
-        i,
-        nom::error::ErrorKind::Fail,
-    )))?; // todo fix, consider what to do when label is None unlike returning error
-    let field = Field {
-        label,
-        term: field.1,
-    };
-    Ok((i, Term::Tagging(Box::new(field))))
+    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    Ok((i, Term::Tagging(ty, label)))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
