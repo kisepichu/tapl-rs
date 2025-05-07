@@ -124,9 +124,10 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     }
 }
 
+#[allow(unused)]
 fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
     match p {
-        Pattern::Var(xs, ty) => {
+        Pattern::Var(_x, ty) => {
             let ctx_ = ctx.clone().shift_and_push0(ty.clone());
             Ok(PatType {
                 ty: ty.clone(),
@@ -153,7 +154,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 context: ctx_,
             })
         }
-        Pattern::Tagging(_ty, _label, _ps) => {
+        Pattern::Tagging(ty, label, ps) => {
             todo!()
         }
     }

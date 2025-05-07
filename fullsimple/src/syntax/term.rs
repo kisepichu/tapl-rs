@@ -27,6 +27,7 @@ pub enum Term {
     Tagging(Type, String),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Box<Term>, Box<Term>),
+    #[allow(unused)]
     Plet(Pattern, Box<Term>, Box<Term>),
     Projection(Box<Term>, String),
     Case(Box<Term>, Vec<Branch>),

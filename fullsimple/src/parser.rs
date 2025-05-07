@@ -2,7 +2,7 @@ use std::iter::once;
 
 use crate::syntax::{
     pattern::{PatField, Pattern},
-    term::{Field, Term},
+    term::{Branch, Field, Term},
     r#type::{TyField, Type},
 };
 use nom::{
@@ -11,12 +11,14 @@ use nom::{
     bytes::complete::tag,
     character::complete::{alpha1, char, digit1, multispace0},
     combinator::{map, map_res, opt},
-    multi::many0,
+    multi::{many0, many1},
     sequence::{delimited, preceded},
 };
 
 fn reserved(i: &str) -> bool {
-    let rs = ["let", "in", "if", "then", "else", "true", "unit", "false"];
+    let rs = [
+        "let", "plet", "in", "if", "then", "else", "true", "unit", "false", "case", "of",
+    ];
     rs.iter().any(|s| *s == i)
 }
 
@@ -90,6 +92,21 @@ fn parse_ident(i: &str) -> IResult<&str, String> {
 
 fn parse_number(i: &str) -> IResult<&str, usize> {
     map_res(digit1, |s: &str| s.parse::<usize>()).parse(i)
+}
+
+fn parse_number_tostring(i: &str) -> IResult<&str, String> {
+    map_res(digit1, |s: &str| s.parse::<usize>())
+        .map(|n| n.to_string())
+        .parse(i)
+}
+
+/// <labelorindex> ::= <label> | number
+fn parse_labelorindex(i: &str) -> IResult<&str, String> {
+    alt((
+        preceded(multispace0, parse_ident),
+        preceded(multispace0, parse_number_tostring),
+    ))
+    .parse(i)
 }
 
 // <tyfield> ::= <label> ":" <ty> | <ty>
@@ -203,11 +220,11 @@ fn parse_type_space(i: &str) -> IResult<&str, Type> {
     Ok((i, t))
 }
 
-/// <pattagging> ::= <ty> ":::" <label> | <pattagging> <pat>
+/// <pattagging> ::= <ty> ":::" <parse_labelorindexcase <Bool, Unit>:::0 true of | <Bool, Unit>:::0 b:Bool => true | <Bool, Unit>:::1 u:Unit => false> | <pattagging> <pat>
 fn parse_pattagging(i: &str) -> IResult<&str, Pattern> {
     let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
     let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
     let (i, patterns) = many0(preceded(multispace0, parse_pat)).parse(i)?;
     Ok((i, Pattern::Tagging(ty, label, patterns)))
 }
@@ -259,15 +276,19 @@ fn parse_patrecord(i: &str) -> IResult<&str, Pattern> {
     Ok((i, Pattern::Record(fields)))
 }
 
-/// <pat> ::= <bound> ":" <ty> | <patrecord> | <pattagging>
+/// <patvar> ::= <bound> ":" <ty>
+fn parse_patvar(i: &str) -> IResult<&str, Pattern> {
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, char(':')).parse(i)?;
+    let (i, ty) = preceded(multispace0, parse_type).parse(i)?;
+    Ok((i, Pattern::Var(label, ty)))
+}
+
+/// <pat> ::= <patvar> | <patrecord> | <pattagging>
 fn parse_pat(i: &str) -> IResult<&str, Pattern> {
     preceded(
         multispace0,
-        alt((
-            map(parse_ident, |s| Pattern::Var(s, Type::TySelf)),
-            parse_pattagging,
-            parse_patrecord,
-        )),
+        alt((parse_patvar, parse_pattagging, parse_patrecord)),
     )
     .parse(i)
 }
@@ -301,7 +322,15 @@ fn parse_var(i: &str) -> IResult<&str, Term> {
     Ok((i, v))
 }
 
-// <field> ::= <label> "=" <term> | <term>
+/// <tagging> ::= <ty> ":::" <labelorindex>
+fn parse_tagging(i: &str) -> IResult<&str, Term> {
+    let (i, ty) = preceded(multispace0, parse_type).parse(i)?;
+    let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
+    Ok((i, Term::Tagging(ty, label)))
+}
+
+/// <field> ::= <label> "=" <term> | <term>
 fn parse_field_twithlabel(i: &str) -> IResult<&str, (Option<String>, Term)> {
     let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
     let (i, _) = preceded(multispace0, char('=')).parse(i)?;
@@ -348,12 +377,16 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::Record(fields)))
 }
 
-/// <tagging> ::= <ty> ":::" <label>
-fn parse_tagging(i: &str) -> IResult<&str, Term> {
-    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
-    let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
-    Ok((i, Term::Tagging(ty, label)))
+/// <let> ::= "let" <bound> "=" <term> "in" <term>
+fn parse_let(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, name) = preceded(multispace0, alpha1).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    let renamed = t2.subst_name(name);
+    Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
@@ -366,16 +399,25 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
 }
 
-/// <let> ::= "let" <bound> "=" <term> "in" <term>
-fn parse_let(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
-    let (i, name) = preceded(multispace0, alpha1).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
-    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
-    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let renamed = t2.subst_name(name);
-    Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
+fn parse_branch(i: &str) -> IResult<&str, Branch> {
+    let (i, _) = preceded(multispace0, char('|')).parse(i)?;
+    let (i, pat) = preceded(multispace0, parse_pat).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Branch { pat, term: t }))
+}
+/// <branches> ::= "|" <pat> "=>" <term> <branches> | null
+fn parse_branches(i: &str) -> IResult<&str, Vec<Branch>> {
+    many1(parse_branch).parse(i)
+}
+
+// <case> ::= "case" <term> "of" <branches>
+fn parse_case(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("case")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("of")).parse(i)?;
+    let (i, branches) = preceded(multispace0, parse_branches).parse(i)?;
+    Ok((i, Term::Case(Box::new(t), branches)))
 }
 
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
@@ -400,13 +442,15 @@ fn parse_encl(i: &str) -> IResult<&str, Term> {
     delimited(char('('), parse_term_space, char(')')).parse(i)
 }
 
-/// <atom> ::= <encl> | <abs> | <let> | <if> | <var> | <unit> | <true> | <false> | <record>
+/// <atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
 fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
+            parse_case,
             parse_let,
             parse_if,
+            parse_tagging,
             parse_record,
             parse_false,
             parse_true,
@@ -419,21 +463,11 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     .parse(i)
 }
 
-// <projection> ::= "." <label>
+// <projection> ::= "." <labelorindex>
 fn parse_projection(i: &str) -> IResult<&str, String> {
     preceded(
         multispace0,
-        preceded(preceded(char('.'), multispace0), parse_ident),
-    )
-    .parse(i)
-}
-fn parse_projection_number(i: &str) -> IResult<&str, String> {
-    preceded(
-        multispace0,
-        preceded(
-            preceded(char('.'), multispace0),
-            map(parse_number, |n| n.to_string()),
-        ),
+        preceded(preceded(char('.'), multispace0), parse_labelorindex),
     )
     .parse(i)
 }
@@ -441,7 +475,7 @@ fn parse_projection_number(i: &str) -> IResult<&str, String> {
 // <postfix> ::= <atom> <projection> | <atom>
 fn parse_postfix(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_atom.parse(i)?;
-    let (i, rest) = nom::multi::many0(alt((parse_projection, parse_projection_number))).parse(i)?;
+    let (i, rest) = many0(parse_projection).parse(i)?;
     let t = rest
         .into_iter()
         .fold(first, |acc, label| Term::Projection(Box::new(acc), label));
@@ -451,7 +485,7 @@ fn parse_postfix(i: &str) -> IResult<&str, Term> {
 // <app> ::= <postfix> <app> | <postfix>
 fn parse_app(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_postfix.parse(i)?;
-    let (i, rest) = nom::multi::many0(parse_postfix).parse(i)?;
+    let (i, rest) = many0(parse_postfix).parse(i)?;
     let t = rest
         .into_iter()
         .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
@@ -630,6 +664,51 @@ use rstest::rstest;
         Box::new(Term::Var(0))
     ))
 )]
+#[case(
+    r"
+case <Bool, Unit>:::0 true of
+  | <Bool, Unit>:::0 b:Bool => b
+  | <Bool, Unit>:::1 u:Unit => false
+    ",
+    Some(
+        Term::Case(
+            Box::new(Term::App(Box::new(Term::Tagging(Type::TyTagging([TyField {
+                label: "0".to_string(),
+                ty: Type::Bool
+            }, TyField {
+                label: "1".to_string(),
+                ty: Type::Unit
+            }].to_vec()), "0".to_string())), Box::new(Term::True))),
+            vec![
+                Branch {
+                    pat: Pattern::Tagging(Type::TyTagging(vec![
+                        TyField {
+                            label: "0".to_string(),
+                            ty: Type::Bool
+                        },
+                        TyField {
+                            label: "1".to_string(),
+                            ty: Type::Unit
+                        }
+                    ]), "0".to_string(), vec![Pattern::Var("b".to_string(), Type::Bool)]),
+                    term: Term::TmpVar("b".to_string())
+                },
+                Branch {
+                    pat: Pattern::Tagging(Type::TyTagging(vec![
+                        TyField {
+                            label: "0".to_string(),
+                            ty: Type::Bool
+                        },
+                        TyField {
+                            label: "1".to_string(),
+                            ty: Type::Unit
+                        }
+                    ]), "1".to_string(), vec![Pattern::Var("u".to_string(), Type::Unit)]),
+                    term: Term::False
+                }
+            ]
+        )
+    ))]
 #[case(r"\", None)]
 #[case(r"(", None)]
 #[case(r")", None)]

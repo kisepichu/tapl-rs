@@ -19,7 +19,7 @@ $ cargo run --bin fullsimple
 <seq> ::= <app> ";" <seq> | <app>
 <app>  ::= <postfix> <app> | <postfix>
 <postfix> ::= <atom> <projection> | <atom>
-<projection> ::= "." <label>
+<projection> ::= "." <labelorindex>
 <atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
@@ -32,7 +32,8 @@ $ cargo run --bin fullsimple
 <notrailing> ::= <fieldseq> <field>
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
-<tagging> ::= <ty> ":::" <label>
+<tagging> ::= <ty> ":::" <labelorindex>
+<labelorindex> ::= <label> | number
 <label> ::= <ident>
 <bound> ::= <ident>
 <var> ::= number | <ident>
@@ -41,13 +42,14 @@ $ cargo run --bin fullsimple
 <false> ::= "false"
 <ident> ::= <ident> (alphabet|digit) | alphabet
 
-<pat> ::= <bound> ":" <ty> | <patrecord> | <pattagging>
+<pat> ::= <patvar> | <patrecord> | <pattagging>
+<patvar> ::= <bound> ":" <ty>
 <patrecord> ::= "{" <patinner> "}"
 <patinner> ::= <patfieldseq> | <patnotrailing>
 <patnotrailing> ::= <patfieldseq> <patfield>
 <patfieldseq> ::= <patfield> "," <patfieldseq> | null
 <patfield> ::= <label> ":" <pat> | <pat>
-<pattagging> ::= <ty> ":::" <label> | <pattagging> <pat>
+<pattagging> ::= <ty> ":::" <parse_labelorindex> | <pattagging> <pat>
 
 <type> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
@@ -255,7 +257,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge
 \\
 \frac{}{\vdash T\mathord{:::}l : T \mathord\Rightarrow \varnothing} \quad & \text{(PT-TAG)} \\
 \\
-\frac{\vdash p_1 : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow x_2\mathord: T_2}{\vdash p_1\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, x_2\mathord:T_2} \quad & \text{(PT-APP)} \\
+\frac{\vdash p_1 : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow \varDelta_2}{\vdash p_1\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, \varDelta_2} \quad & \text{(PT-APP)} \\
 \end{align*}
 ```
 
