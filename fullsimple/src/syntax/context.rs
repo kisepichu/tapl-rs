@@ -8,7 +8,7 @@ pub struct Context {
 
 #[allow(dead_code)]
 impl Context {
-    pub fn shift_and_push0(&mut self, ty: Type) -> Context {
+    pub fn shift_and_push0(self, ty: Type) -> Context {
         if self.binding.is_some() {
             Context {
                 parent: Some(Box::new(self.clone())),
@@ -18,6 +18,21 @@ impl Context {
             Context {
                 parent: None,
                 binding: Some(Box::new(ty)),
+            }
+        }
+    }
+
+    pub fn concat(self, ctx: Context) -> Context {
+        if ctx.binding.is_none() {
+            self.clone()
+        } else if ctx.parent.is_none() {
+            self.shift_and_push0(*ctx.binding.unwrap())
+        } else {
+            let self_ = self.shift_and_push0(*ctx.binding.unwrap());
+            if ctx.parent.is_none() {
+                self_
+            } else {
+                self_.concat(*ctx.parent.unwrap())
             }
         }
     }

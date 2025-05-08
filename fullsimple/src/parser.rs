@@ -17,7 +17,7 @@ use nom::{
 
 fn reserved(i: &str) -> bool {
     let rs = [
-        "let", "plet", "in", "if", "then", "else", "true", "unit", "false", "case", "of",
+        "let", "plet", "in", "if", "then", "else", "true", "unit", "false", "case", "of", "Self",
     ];
     rs.iter().any(|s| *s == i)
 }
@@ -167,13 +167,14 @@ fn parse_tytagging(i: &str) -> IResult<&str, Type> {
     Ok((i, Type::TyTagging(fields)))
 }
 
-/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging>
+/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging> | <tySelf>
 fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     preceded(
         multispace0,
         alt((
             map(tag("Bool"), |_| Type::Bool),
             map(tag("Unit"), |_| Type::Unit),
+            map(tag("Self"), |_| Type::TySelf),
             parse_tytagging,
             parse_tyrecord,
             parse_tyencl,

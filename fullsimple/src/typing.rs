@@ -115,13 +115,88 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Plet(_p, _t1, _t2) => {
             todo!()
         }
-        Term::Tagging(_ty, _label) => {
-            todo!()
+        Term::Tagging(ty, label) => {
+            if let Type::TyTagging(tyfields) = ty {
+                let ty_ = tyfields
+                    .iter()
+                    .find(|field| field.label == *label)
+                    .map(|field| field.ty.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "type check failed: {}\n  tag {} not found in tagging type {}",
+                            t, label, ty
+                        )
+                    })?;
+                fn replace_self(ty: &Type, replace: &Type) -> Type {
+                    match ty {
+                        Type::TySelf => replace.clone(),
+                        Type::Arr(t1, t2) => Type::Arr(
+                            Box::new(replace_self(t1, replace)),
+                            Box::new(replace_self(t2, replace)),
+                        ),
+                        Type::TyRecord(fields) => Type::TyRecord(
+                            fields
+                                .iter()
+                                .map(|f| TyField {
+                                    label: f.label.clone(),
+                                    ty: replace_self(&f.ty, replace),
+                                })
+                                .collect(),
+                        ),
+                        _ => ty.clone(),
+                    }
+                }
+                Ok(replace_self(&ty_, ty))
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected tagging type, but found {}",
+                    t, ty
+                ))
+            }
         }
-        Term::Case(_t1, _bs) => {
-            todo!()
-            // let ty1 = type_of(ctx, t1)?;
-            // fn cover...
+        Term::Case(t, bs) => {
+            let tyt = type_of(ctx, t)?;
+            match tyt.clone() {
+                Type::TyTagging(tyfields) => {
+                    let mut tyt_: Option<Type> = None;
+                    for (bi, f0i) in bs.iter().zip(tyfields) {
+                        let ptybi = pat_type_of(ctx, &bi.pat)?;
+
+                        if let Pattern::Tagging(_, label, _) = &bi.pat {
+                            if label != &f0i.label {
+                                return Err(format!(
+                                    "type check failed: {}\n, case expression currently requires exact ordering of labels.\n  expected {}, but found {}",
+                                    t, f0i.label, label
+                                ));
+                            }
+                        }
+                        if ptybi.ty != tyt {
+                            return Err(format!(
+                                "type check failed: {}\n  pattern type {} does not match term type {}",
+                                t, ptybi.ty, tyt
+                            ));
+                        }
+                        let ctx_ = ctx.clone().concat(ptybi.context);
+                        let ty_bi = type_of(&ctx_, &bi.term)?; // todo subst name in bi.term
+
+                        if tyt_.is_none() {
+                            tyt_ = Some(ty_bi);
+                        } else if tyt_ != Some(ty_bi.clone()) {
+                            return Err(format!(
+                                "type check failed: {}\n  branches of case expression have different types:\n  {}, {}",
+                                t,
+                                tyt_.unwrap(),
+                                ty_bi
+                            ));
+                        }
+                    }
+                    Ok(tyt_.unwrap())
+                }
+                _ => Err(format!(
+                    "type check failed: {}\n  case expressions currently only support tagging type.\n  expected tagging type, but found {}",
+                    t, tyt
+                )),
+            }
         }
     }
 }
@@ -157,7 +232,24 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
             })
         }
         Pattern::Tagging(ty, label, ps) => {
-            todo!()
+            if let Type::TyTagging(tyfields) = ty {
+                let ty0 = tyfields
+                    .iter()
+                    .find(|field| field.label == *label)
+                    .map(|field| field.ty.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "type check failed: {}\n  tag {} not found in tagging type {}",
+                            p, label, ty
+                        )
+                    })?;
+                todo!();
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected tagging type, but found {}",
+                    p, ty
+                ))
+            }
         }
     }
 }

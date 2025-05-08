@@ -54,7 +54,7 @@ $ cargo run --bin fullsimple
 <type> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 <tyarrsub> ::= "->" <ty>
-<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord>
+<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging> | <tySelf>
 <tyencl> ::= "(" <ty> ")"
 <tytagging>::= "<" <tyinner> ">"
 <tyrecord> ::= "{" <tyinner> "}"
@@ -64,6 +64,7 @@ $ cargo run --bin fullsimple
 <tyfield> ::= <label> ":" <ty> | <ty>
 <tyunit> ::= "Unit"
 <tybool> ::= "Bool"
+<tySelf> ::= "Self"
 ```
 
 ### Abstract syntax
@@ -107,7 +108,7 @@ p ::=&   &\quad (\text{patterns}) \\
   \quad \mid\ & p_\mathrm{tag} &\quad (\text{tagging pattern}) \\
 p_{\mathrm{tag}} ::=& &\quad (\text{tagging pattern}) \\
   \quad \mid\ &T\mathord{:::}l &\quad (\text{tagging}) \\
-  \quad \mid\ &p_\mathrm{tag}\ p &\quad (\text{tagging application}) \\
+  \quad \mid\ &p_\mathrm{tag}\ x &\quad (\text{tagging application}) \\
   \\
 
 T ::=&   &\quad (\text{types}) \\
@@ -188,7 +189,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
 \begin{align*}
 \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ ...\ v_n &(n \ge 0), \\
-p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge 0). \\
+p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\ x_{i2}\ ...\ x_{in_i} &(n_i \ge 0). \\
 \end{align*}
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
@@ -238,10 +239,15 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge
 \\
 \frac{}{\Gamma \vdash \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord{:::}l_j : T_j} \quad & \text{(T-VARIANT)} \\
 \\
-\frac{\vdash t\mathord:T \quad \mathit{cover(T, p_i\ ^{i\in 1..n})} \quad \forall ^{i\in n}\vdash p_i : T\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
+\frac{\vdash t\mathord:\langle l_i\mathord:T_i,^{i \in 1..n}\rangle \quad \forall ^{i\in n}\vdash p_i : \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
+\\
+
+\frac{\vdash t\mathord:T \quad \mathit{cover(p_i\ ^{i\in 1..n})} \quad \forall ^{i\in n}\vdash p_i : T\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{((T-CASE'))} \\
 
 \end{align*}
 ```
+
+- case に variant 以外を許す T-CASE' は未実装
 
 ## Pattern typing
 
@@ -255,7 +261,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge
 \\
 \frac{}{\vdash T\mathord{:::}l : T \mathord\Rightarrow \varnothing} \quad & \text{(PT-TAG)} \\
 \\
-\frac{\vdash p_1 : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow \varDelta_2}{\vdash p_1\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, \varDelta_2} \quad & \text{(PT-APP)} \\
+\frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow \varDelta_2}{\vdash p_{\mathrm{tag}1}\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, \varDelta_2} \quad & \text{(PT-TAGAPP)} \\
 \end{align*}
 ```
 
