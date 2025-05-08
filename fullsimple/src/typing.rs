@@ -120,6 +120,8 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         }
         Term::Case(_t1, _bs) => {
             todo!()
+            // let ty1 = type_of(ctx, t1)?;
+            // fn cover...
         }
     }
 }

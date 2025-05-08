@@ -120,12 +120,12 @@ T ::=&   &\quad (\text{types}) \\
 
 \Gamma ::=&   &\quad (\text{contexts}) \\
   \quad \mid\ &\varnothing &\quad (\text{empty}) \\
-  \quad \mid\ &\uparrow^1 \Gamma, 0\mathord{:}T &\quad (\text{term variable binding}) \\
+  \quad \mid\ &\Gamma, 0\mathord{:}T &\quad (\text{term variable binding}) \\
 \end{align*}
 ```
 
-- contexts の定義を本文と変えている。 $\uparrow^1 \Gamma$ は $\Gamma$ の変数を全て 1 つシフトしたものとする(独自の記法、このような表し方の情報求む)。本文では名無し項を使うのを(少なくとも抽象構文上の想定では)辞めているが、こうすることで評価規則や(T-VAR 以外の)型付け規則中の $x$ を消去できて、名無し項のまま抽象構文で表せて、そのまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
-- この段階では、 record のフィールドの順序の違いを区別する。11.8(p.99)
+- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、 $\Gamma, 0\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように実装する。本文では名無し項を使うのを(少なくとも抽象構文上の想定では)辞めているが、こうすることで評価規則や(T-VAR 以外の)型付け規則中の $x$ を消去できて、名無し項のまま表せて、そのまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
+- この段階では、 variant type や record のフィールドの順序の違いを区別する。11.8(p.99)
 
 ### Derived forms
 
@@ -218,7 +218,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge
 \begin{align*}
 \frac{x\mathord{:}T \in \Gamma}{\Gamma \vdash x \mathord{:} T} \quad & \text{(T-VAR)} \\
 \\
-\frac{\uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad & \text{(T-ABS)} \\
+\frac{\Gamma, 0\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad & \text{(T-ABS)} \\
 \\
 \frac{{\Gamma \vdash t_1 \mathord{:} T_{11} \rightarrow T_{12}} \quad {\Gamma \vdash t_2 \mathord{:} T_{21}}}{\Gamma \vdash t_1\ t_2 \mathord{:} T_{12} \rightarrow T_{21}} \quad & \text{(T-APP)} \\
 \\
@@ -230,7 +230,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\
 \\
-\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
+\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
 \\
 \frac{\forall i, \Gamma \vdash t_i\mathord:T_i}{\Gamma \vdash \{l_i\mathord=t_i,^{i\in 1..n}\}: \{l_i\mathord=T_i,^{i\in 1..n}\}} \quad & \text{(T-RCD)} \\
 \\
@@ -238,16 +238,14 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ p_{i1}\ p_{i2}\ ...\ p_{in_i} &(n_i \ge
 \\
 \frac{}{\Gamma \vdash \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord{:::}l_j : T_j} \quad & \text{(T-VARIANT)} \\
 \\
+\frac{\vdash t\mathord:T \quad \mathit{cover(T, p_i\ ^{i\in 1..n})} \quad \forall ^{i\in n}\vdash p_i : T\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
 
 \end{align*}
 ```
 
-- Abstract syntax 注意参照。
-
 ## Pattern typing
 
-パターン $p$ の型付けは $p:T\mathord\Rightarrow\varDelta$ という形をしている。 $T$ はマッチする項の型で、 $\varDelta$ は生成する文脈( $\Gamma$ と同じ型[^1])。
-[^1]: 一般的な語の。
+パターン $p$ の型付けは $p:T\mathord\Rightarrow\varDelta$ という形をしている。 $T$ はマッチする項の型で、 $\varDelta$ は生成する文脈。名無し項のため、 $\Gamma, \varDelta$ は、 $\varDelta$ のサイズを $n$ として、 $\uparrow^n \Gamma, \varDelta$ のように実装する。
 
 ```math
 \begin{align*}
