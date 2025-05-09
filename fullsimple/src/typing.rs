@@ -243,7 +243,41 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                             p, label, ty
                         )
                     })?;
-                todo!();
+
+                let mut pty = PatType {
+                    ty: ty0.clone(),
+                    add: 0,
+                    context: ctx.clone(),
+                };
+                for p in ps {
+                    let ptyarg = pat_type_of(ctx, p)?;
+                    if let Type::Arr(ty1, ty2) = pty.ty {
+                        if *ty1 == ptyarg.ty {
+                            pty = PatType {
+                                ty: *ty2.clone(),
+                                add: pty.add + ptyarg.add,
+                                context: pty.context.concat(ptyarg.context),
+                            };
+                        } else {
+                            return Err(format!(
+                                "type check failed: {}\n  expected argument type {}, but found {}: {}",
+                                p, ty1, p, ty2
+                            ));
+                        }
+                    } else {
+                        return Err(format!(
+                            "type check failed: {}\n  expected arrow type, but found {}",
+                            p, ty
+                        ));
+                    }
+                }
+                if pty.ty == Type::TySelf {
+                    pty.ty = ty.clone();
+                } else {
+                    println!("pty.ty: {:?}", pty.ty);
+                    todo!();
+                }
+                Ok(pty)
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected tagging type, but found {}",

@@ -125,8 +125,8 @@ impl fmt::Display for Term {
                             .map(|b| {
                                 format!(
                                     "| {} => {} ",
-                                    print(&b.term, false, false),
                                     &b.pat.to_string(),
+                                    print(&b.term, false, false),
                                 )
                             })
                             .fold("".to_string(), |acc, x| acc + &x)

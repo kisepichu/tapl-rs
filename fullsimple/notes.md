@@ -241,13 +241,8 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\ x_{i2}\ ...\ x_{in_i} &(n_i \ge
 \\
 \frac{\vdash t\mathord:\langle l_i\mathord:T_i,^{i \in 1..n}\rangle \quad \forall ^{i\in n}\vdash p_i : \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
 \\
-
-\frac{\vdash t\mathord:T \quad \mathit{cover(p_i\ ^{i\in 1..n})} \quad \forall ^{i\in n}\vdash p_i : T\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{((T-CASE'))} \\
-
 \end{align*}
 ```
-
-- case に variant 以外を許す T-CASE' は未実装
 
 ## Pattern typing
 
