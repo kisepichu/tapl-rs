@@ -405,7 +405,21 @@ fn parse_branch(i: &str) -> IResult<&str, Branch> {
     let (i, pat) = preceded(multispace0, parse_pat).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Branch { pat, term: t }))
+
+    fn rename(t: Term, p: &Pattern) -> Term {
+        match p {
+            Pattern::Var(x, _) => t.subst_name(x),
+            Pattern::Tagging(_, _, ps) => ps.iter().fold(t, |acc, p| {
+                rename(acc, p).shift(1).expect("plus shift does not fail")
+            }),
+            Pattern::Record(_pfs) => {
+                unimplemented!("Record pattern not implemented")
+            }
+        }
+    }
+    let renamed = rename(t, &pat);
+
+    Ok((i, Branch { pat, term: renamed }))
 }
 /// <branches> ::= "|" <pat> "=>" <term> <branches> | null
 fn parse_branches(i: &str) -> IResult<&str, Vec<Branch>> {

@@ -188,8 +188,8 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \\
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
 \begin{align*}
-\text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ ...\ v_n &(n \ge 0), \\
-p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\ x_{i2}\ ...\ x_{in_i} &(n_i \ge 0). \\
+\text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
+p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\mathord:T_{i1}\ x_{i2}\mathord:T_{i2}\ \dots\ x_{in_i}\mathord:T_{in_i} &(n_i \ge 0). \\
 \end{align*}
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
@@ -207,7 +207,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\ x_{i2}\ ...\ x_{in_i} &(n_i \ge
 \\
 \mathit{match}(T\mathord{:::}l, T\mathord{:::}l) &\stackrel{\mathrm{def}}{=} () \quad & (\text{M-TAG}) \\
 \\
-\mathit{match}(p_{\mathrm{tag}}\ p, v_{\mathrm{tag}}\ v) &\stackrel{\mathrm{def}}{=} \mathit{match}(p_{\mathrm{tag}}, v_{\mathrm{tag}}) \mathrm{plet}\ p=v\ \mathrm{in} \quad & (\text{M-TAGAPP}) \\
+\mathit{match}(p_{\mathrm{tag}}\ x, v_{\mathrm{tag}}\ v) &\stackrel{\mathrm{def}}{=} \mathit{match}(p_{\mathrm{tag}}, v_{\mathrm{tag}}) \mathrm{let}\ x=v\ \mathrm{in} \quad & (\text{M-TAGAPP}) \\
 \end{align*}
 ```
 
@@ -255,8 +255,10 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\ x_{i2}\ ...\ x_{in_i} &(n_i \ge
 \frac{\{l_i\ ^{i\in 1..n}\}\subseteq \{k_i\ ^{i\in 1..m}\} \quad \forall^{i\in 1..n}\exists^{i\in 1..n}\ l_i=k_j\ \land\ \vdash p_i : T_j \mathord\Rightarrow \varDelta_i}{\vdash \{l_i\mathord=p_i\ ^{i \in 1..n} \}:\{k_j\mathord:T_j\ ^{j \in 1..m} \}\mathord\Rightarrow \varDelta_1, \varDelta_2, \dots,\varDelta_n} \quad & \text{(PT-RCD')} \\
 \\
 \frac{}{\vdash T\mathord{:::}l : T \mathord\Rightarrow \varnothing} \quad & \text{(PT-TAG)} \\
+% \\
+% \frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow \varDelta_2}{\vdash p_{\mathrm{tag}1}\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, \varDelta_2} \quad & \text{(PT-TAGAPP)} \\
 \\
-\frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow \varDelta_2}{\vdash p_{\mathrm{tag}1}\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, \varDelta_2} \quad & \text{(PT-TAGAPP)} \\
+\frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1}{\vdash p_{\mathrm{tag}1}\ x_2\mathord:T_{11} : T_{12} \mathord\Rightarrow \varDelta_1, x_2\mathord: T_{11}} \quad & \text{(PT-TAGAPP)} \\
 \end{align*}
 ```
 
