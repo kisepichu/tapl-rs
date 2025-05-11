@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use rstest::rstest;
 
 use crate::syntax::{
@@ -249,15 +251,15 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                     add: 0,
                     context: ctx.clone(),
                 };
-                if tyfields.len() != args.len() + 1 {
-                    return Err(format!(
-                        "type check failed: {}\n  expected {} arguments, but found {}",
-                        p,
-                        tyfields.len(),
-                        args.len()
-                    ));
+
+                fn tyarr_to_vec(ty: Type) -> Vec<Type> {
+                    match ty {
+                        Type::Arr(l, r) => once(*l).chain(tyarr_to_vec(*r)).collect(),
+                        ty => vec![ty],
+                    }
                 }
-                for (arg, tyf) in args.iter().zip(tyfields) {
+                let tyargs = tyarr_to_vec(ty0);
+                for (arg, tya) in args.iter().zip(tyargs) {
                     if let Type::Arr(ty1, ty2) = pty.ty {
                         let ptyarg = pat_type_of(ctx, &Pattern::Var(arg.clone(), *ty1.clone()))?;
                         pty = PatType {
@@ -275,7 +277,10 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 if pty.ty == Type::TySelf {
                     pty.ty = ty.clone();
                 } else {
-                    panic!("internal error: number of arguments matches but type does not match");
+                    return Err(format!(
+                        "type check failed: {}\n  number of arguments did not match",
+                        p,
+                    ));
                 }
                 Ok(pty)
             } else {
