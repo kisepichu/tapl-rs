@@ -1,9 +1,6 @@
 use num::FromPrimitive;
 
-use crate::syntax::{
-    pattern::Pattern,
-    term::{Field, Term},
-};
+use crate::syntax::term::{Field, Term};
 
 impl Term {
     pub fn shift(&self, d: isize) -> Result<Term, String> {
@@ -176,27 +173,8 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (v1, t2) if v1.isval() => term_subst(0, v1, t2)?.shift(-1),
             _ => Ok(Term::Let(Box::new(eval1(t1)?), t2.clone())),
         },
-        Term::Case(v, branches) if v.isval() => {
-            if let Term::Tagging(tyv, labelv) = &**v {
-                let bj = branches
-                    .iter()
-                    .find(|b| {
-                        if let Pattern::Tagging(tyb, labelb, _ps) = &b.pat {
-                            tyv == tyb && labelv == labelb
-                        } else {
-                            false
-                        }
-                    })
-                    .ok_or(format!("undefined label: {}", labelv))?;
-
-                if let Pattern::Tagging(_tybj, _labelbj, _psj) = &bj.pat {
-                    todo!();
-                }
-
-                todo!();
-            } else {
-                Err(format!("internal error: expected Tagging: {}", v))
-            }
+        Term::Case(v, _bs) if v.isval() => {
+            todo!()
         }
         _ => Err("eval1: no rule applies".to_string()),
     }

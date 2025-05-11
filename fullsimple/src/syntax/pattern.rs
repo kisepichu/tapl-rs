@@ -11,7 +11,7 @@ pub struct PatField {
 pub enum Pattern {
     Var(String, Type),
     Record(Vec<PatField>),
-    Tagging(Type, String, Vec<Pattern>),
+    Tagging(Type, String, Vec<String>),
 }
 
 impl fmt::Display for Pattern {

@@ -231,7 +231,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 context: ctx_,
             })
         }
-        Pattern::Tagging(ty, label, ps) => {
+        Pattern::Tagging(ty, label, args) => {
             if let Type::TyTagging(tyfields) = ty {
                 let ty0 = tyfields
                     .iter()
@@ -249,33 +249,33 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                     add: 0,
                     context: ctx.clone(),
                 };
-                for p in ps {
-                    let ptyarg = pat_type_of(ctx, p)?;
+                if tyfields.len() != args.len() + 1 {
+                    return Err(format!(
+                        "type check failed: {}\n  expected {} arguments, but found {}",
+                        p,
+                        tyfields.len(),
+                        args.len()
+                    ));
+                }
+                for (arg, tyf) in args.iter().zip(tyfields) {
                     if let Type::Arr(ty1, ty2) = pty.ty {
-                        if *ty1 == ptyarg.ty {
-                            pty = PatType {
-                                ty: *ty2.clone(),
-                                add: pty.add + ptyarg.add,
-                                context: pty.context.concat(ptyarg.context),
-                            };
-                        } else {
-                            return Err(format!(
-                                "type check failed: {}\n  expected argument type {}, but found {}: {}",
-                                p, ty1, p, ty2
-                            ));
-                        }
+                        let ptyarg = pat_type_of(ctx, &Pattern::Var(arg.clone(), *ty1.clone()))?;
+                        pty = PatType {
+                            ty: *ty2.clone(),
+                            add: pty.add + ptyarg.add,
+                            context: pty.context.concat(ptyarg.context),
+                        };
                     } else {
                         return Err(format!(
                             "type check failed: {}\n  expected arrow type, but found {}",
-                            p, ty
+                            arg, ty
                         ));
                     }
                 }
                 if pty.ty == Type::TySelf {
                     pty.ty = ty.clone();
                 } else {
-                    println!("pty.ty: {:?}", pty.ty);
-                    todo!();
+                    panic!("internal error: number of arguments matches but type does not match");
                 }
                 Ok(pty)
             } else {

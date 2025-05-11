@@ -26,7 +26,7 @@ $ cargo run --bin fullsimple
 <if> ::= "if" <term> "then" <term> "else" <term>
 <let> ::= "let" <bound> "=" <term> "in" <term>
 <case> ::= "case" <term> "of" <branches>
-<branches> ::= "|" <pat> "=>" <term> <branches> | null
+<branches> ::= "|" <pattagging> "=>" <term> <branches> | null
 <record> ::= "{" <inner> "}"
 <inner> ::= <fieldseq> | <notrailing>
 <notrailing> ::= <fieldseq> <field>
@@ -49,7 +49,7 @@ $ cargo run --bin fullsimple
 <patnotrailing> ::= <patfieldseq> <patfield>
 <patfieldseq> ::= <patfield> "," <patfieldseq> | null
 <patfield> ::= <label> ":" <pat> | <pat>
-<pattagging> ::= <ty> ":::" <parse_labelorindex> | <pattagging> <pat>
+<pattagging> ::= <ty> ":::" <parse_labelorindex> | <pattagging> <ident>
 
 <type> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
@@ -85,7 +85,7 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \quad \mid\ &\mathrm{let}\ t_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
   \quad \mid\ &\mathrm{plet}\ p = t_1\ \mathrm{in}\ t_2 &\quad (\text{pattern let}) \\
-  \quad \mid\ & \mathrm{case}\ t\ \mathrm{of} \ p_i \Rightarrow t_i \ ^{i\in 1..n} &\quad (\text{case}) \\
+  \quad \mid\ & \mathrm{case}\ t\ \mathrm{of} \ p_{\mathrm{tag}i} \Rightarrow t_i \ ^{i\in 1..n} &\quad (\text{case}) \\
   \\
   \\
 
@@ -121,11 +121,11 @@ T ::=&   &\quad (\text{types}) \\
 
 \Gamma ::=&   &\quad (\text{contexts}) \\
   \quad \mid\ &\varnothing &\quad (\text{empty}) \\
-  \quad \mid\ &\Gamma, 0\mathord{:}T &\quad (\text{term variable binding}) \\
+  \quad \mid\ &\uparrow^1\Gamma, 0\mathord{:}T &\quad (\text{term variable binding}) \\
 \end{align*}
 ```
 
-- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、 $\Gamma, 0\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように実装する。本文では名無し項を使うのを(少なくとも抽象構文上の想定では)辞めているが、こうすることで評価規則や(T-VAR 以外の)型付け規則中の $x$ を消去できて、名無し項のまま表せて、そのまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
+- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、本文の $\Gamma, x\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように書けば、名無し項のまま表せて、このまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
 - この段階では、 variant type や record のフィールドの順序の違いを区別する。11.8(p.99)
 
 ### Derived forms
@@ -189,7 +189,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
 \begin{align*}
 \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
-p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\mathord:T_{i1}\ x_{i2}\mathord:T_{i2}\ \dots\ x_{in_i}\mathord:T_{in_i} &(n_i \ge 0). \\
+p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ 0\ 1\ \dots\ n_i\mathord-1 &(n_i \ge 0). \\
 \end{align*}
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
@@ -219,7 +219,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\mathord:T_{i1}\ x_{i2}\mathord:T
 \begin{align*}
 \frac{x\mathord{:}T \in \Gamma}{\Gamma \vdash x \mathord{:} T} \quad & \text{(T-VAR)} \\
 \\
-\frac{\Gamma, 0\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad & \text{(T-ABS)} \\
+\frac{\uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2 \mathord{:} T_2}{\Gamma \vdash \lambda\mathord{:}T_1.t_2 : T_1 \rightarrow T_2} \quad & \text{(T-ABS)} \\
 \\
 \frac{{\Gamma \vdash t_1 \mathord{:} T_{11} \rightarrow T_{12}} \quad {\Gamma \vdash t_2 \mathord{:} T_{21}}}{\Gamma \vdash t_1\ t_2 \mathord{:} T_{12} \rightarrow T_{21}} \quad & \text{(T-APP)} \\
 \\
@@ -231,7 +231,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\mathord:T_{i1}\ x_{i2}\mathord:T
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\
 \\
-\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
+\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
 \\
 \frac{\forall i, \Gamma \vdash t_i\mathord:T_i}{\Gamma \vdash \{l_i\mathord=t_i,^{i\in 1..n}\}: \{l_i\mathord=T_i,^{i\in 1..n}\}} \quad & \text{(T-RCD)} \\
 \\
@@ -255,10 +255,8 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ x_{i1}\mathord:T_{i1}\ x_{i2}\mathord:T
 \frac{\{l_i\ ^{i\in 1..n}\}\subseteq \{k_i\ ^{i\in 1..m}\} \quad \forall^{i\in 1..n}\exists^{i\in 1..n}\ l_i=k_j\ \land\ \vdash p_i : T_j \mathord\Rightarrow \varDelta_i}{\vdash \{l_i\mathord=p_i\ ^{i \in 1..n} \}:\{k_j\mathord:T_j\ ^{j \in 1..m} \}\mathord\Rightarrow \varDelta_1, \varDelta_2, \dots,\varDelta_n} \quad & \text{(PT-RCD')} \\
 \\
 \frac{}{\vdash T\mathord{:::}l : T \mathord\Rightarrow \varnothing} \quad & \text{(PT-TAG)} \\
-% \\
-% \frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \vdash p_2: T_{11}\mathord\Rightarrow \varDelta_2}{\vdash p_{\mathrm{tag}1}\ p_2 : T_{12} \mathord\Rightarrow \varDelta_1, \varDelta_2} \quad & \text{(PT-TAGAPP)} \\
 \\
-\frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1}{\vdash p_{\mathrm{tag}1}\ x_2\mathord:T_{11} : T_{12} \mathord\Rightarrow \varDelta_1, x_2\mathord: T_{11}} \quad & \text{(PT-TAGAPP)} \\
+\frac{\vdash p_{\mathrm{tag}1} : T_{11}\mathord\rightarrow T_{12}\mathord\Rightarrow \varDelta_1 \quad \Gamma \vdash x_2: T_{11}\mathord\Rightarrow x\mathord:T_{11}}{\Gamma \vdash p_{\mathrm{tag}1}\ x_2 : T_{12} \mathord\Rightarrow \varDelta_1, x\mathord:T_{11}} \quad & \text{(PT-TAGAPP)} \\
 \end{align*}
 ```
 
