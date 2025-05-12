@@ -97,6 +97,36 @@ let y = {f=\b:Bool.true, cool=true, cute=true, false} in
     Some(r"{0:Bool, 1:Bool}"),
     Some(r"{0=false, 1=true}")
 )]
+#[case(
+    r"
+type Ty = <Bool->Bool->Bool->Self, Unit->Self> in
+case Ty:::0 false true true of
+  | Ty:::0 b c d => b
+  | Ty:::1 u => true
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
+#[case(
+    r"
+type Ty = <Bool->Bool->Bool->Self, Unit->Self> in
+case Ty:::0 false true false of
+  | Ty:::1 u => false
+  | Ty:::0 b c d => c
+    ",
+    None,
+    None
+)]
+#[case(
+    r"
+type Ty = <Unit->Self, Bool->Bool->Bool->Self> in
+case Ty:::1 false true false of
+  | Ty:::0 u => false
+  | Ty:::1 b c d => c
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
 // #[case(
 //     r"",
 //     Some(r""),

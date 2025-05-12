@@ -13,13 +13,13 @@ pub struct Field {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Branch {
-    pub pat: PTag,
+    pub ptag: PTag,
     pub term: Term,
 }
 
 impl fmt::Display for Branch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "| {} => {}", self.pat, self.term)
+        write!(f, "| {} => {}", self.ptag, self.term)
     }
 }
 

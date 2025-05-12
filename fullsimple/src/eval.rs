@@ -204,7 +204,7 @@ fn eval1(t: &Term) -> Result<Term, String> {
             };
             let bj = bs
                 .iter()
-                .find(|b| b.pat.label == labelv0)
+                .find(|b| b.ptag.label == labelv0)
                 .ok_or(format!("internal error: no branch found for {}", labelv0))?;
             let mut t = bj.term.clone();
             for vv in v.iter().skip(1).rev() {

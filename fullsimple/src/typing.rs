@@ -162,13 +162,13 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 Type::TyTagging(tyfields) => {
                     let mut tyt_: Option<Type> = None;
                     for (bi, f0i) in bs.iter().zip(tyfields) {
-                        let ptybi = pat_type_of(ctx, &Pattern::Tagging(bi.pat.clone()))?;
+                        let ptybi = pat_type_of(ctx, &Pattern::Tagging(bi.ptag.clone()))?;
 
                         {
-                            if bi.pat.label != f0i.label {
+                            if bi.ptag.label != f0i.label {
                                 return Err(format!(
                                     "type check failed: {}\n, case expression currently requires exact ordering of labels.\n  expected {}, but found {}",
-                                    t, f0i.label, bi.pat.label
+                                    t, f0i.label, bi.ptag.label
                                 ));
                             }
                         }

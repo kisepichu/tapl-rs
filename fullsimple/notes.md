@@ -20,12 +20,13 @@ $ cargo run --bin fullsimple
 <app>  ::= <postfix> <app> | <postfix>
 <postfix> ::= <atom> <projection> | <atom>
 <projection> ::= "." <labelorindex>
-<atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
+<atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging> | <lettype>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
-<if> ::= "if" <term> "then" <term> "else" <term>
-<let> ::= "let" <bound> "=" <term> "in" <term>
+<lettype> ::= "type" <ident> "=" <type> "in" <term>
 <case> ::= "case" <term> "of" <branches>
+<let> ::= "let" <bound> "=" <term> "in" <term>
+<if> ::= "if" <term> "then" <term> "else" <term>
 <branches> ::= "|" <pattagging> "=>" <term> <branches> | null
 <record> ::= "{" <inner> "}"
 <inner> ::= <fieldseq> | <notrailing>
@@ -54,7 +55,7 @@ $ cargo run --bin fullsimple
 <type> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 <tyarrsub> ::= "->" <ty>
-<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging> | <tySelf>
+<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyvar> | <tyrecord> | <tytagging> | <tySelf>
 <tyencl> ::= "(" <ty> ")"
 <tytagging>::= "<" <tyinner> ">"
 <tyrecord> ::= "{" <tyinner> "}"
@@ -62,6 +63,7 @@ $ cargo run --bin fullsimple
 <tynotrailing> ::= <tyfieldseq> <tyfield>
 <tyfieldseq> ::= <tyfield> "," <tyfieldseq> | null
 <tyfield> ::= <label> ":" <ty> | <ty>
+<tyvar> ::= <ident>
 <tyunit> ::= "Unit"
 <tybool> ::= "Bool"
 <tySelf> ::= "Self"
@@ -138,6 +140,9 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ [x\mapsto 0]t_2 \quad & (\text{let'}) \\
 \\
 \lambda x:T.t_2 \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
+\\
+\\
+\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype})
 \end{align*}
 ```
 
@@ -189,7 +194,7 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
 \begin{align*}
 \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
-p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ 0\ 1\ \dots\ n_i\mathord-1 &(n_i \ge 0). \\
+p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
 \end{align*}
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow

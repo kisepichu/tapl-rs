@@ -66,12 +66,115 @@ impl Term {
                     todo!()
                 }
                 Term::Tagging(_) => t.clone(),
-                Term::Case(_t, _branches) => {
-                    todo!()
-                }
+                Term::Case(t, bs) => Term::Case(
+                    Box::new(walk(t, z, c)),
+                    bs.iter()
+                        .map(|b| Branch {
+                            ptag: b.ptag.clone(),
+                            term: walk(&b.term, z, c + b.ptag.args.len()),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
             }
         }
         walk(self, zero_name, 0)
+    }
+    fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Term {
+        // todo: generalize to above?
+        match self {
+            Term::Var(_) => self.clone(),
+            Term::TmpVar(_) => self.clone(),
+            Term::Abs(ty, t1) => Term::Abs(
+                ty.subst_name(type_name, ty2),
+                Box::new(t1.subst_type_name(type_name, ty2)),
+            ),
+            Term::Unit => Term::Unit,
+            Term::True => Term::True,
+            Term::False => Term::False,
+            Term::App(t1, t2) => Term::App(
+                Box::new(t1.subst_type_name(type_name, ty2)),
+                Box::new(t2.subst_type_name(type_name, ty2)),
+            ),
+            Term::Record(fields) => Term::Record(
+                fields
+                    .iter()
+                    .map(|field| Field {
+                        label: field.label.clone(),
+                        term: field.term.subst_type_name(type_name, ty2),
+                    })
+                    .collect(),
+            ),
+            Term::Projection(t, label) => {
+                Term::Projection(Box::new(t.subst_type_name(type_name, ty2)), label.clone())
+            }
+            Term::If(t1, t2, t3) => Term::If(
+                Box::new(t1.subst_type_name(type_name, ty2)),
+                Box::new(t2.subst_type_name(type_name, ty2)),
+                Box::new(t3.subst_type_name(type_name, ty2)),
+            ),
+            Term::Let(t1, t2) => {
+                let t1 = t1.subst_type_name(type_name, ty2);
+                let t2 = t2.subst_type_name(type_name, ty2);
+                Term::Let(Box::new(t1), Box::new(t2))
+            }
+            Term::Plet(_pat, _t1, _t2) => {
+                todo!()
+            }
+            Term::Tagging(tag) => Term::Tagging(Tag {
+                ty: tag.ty.subst_name(type_name, ty2),
+                label: tag.label.clone(),
+            }),
+            Term::Case(t, bs) => Term::Case(
+                Box::new(t.subst_type_name(type_name, ty2)),
+                bs.iter()
+                    .map(|b| Branch {
+                        ptag: b.ptag.subst_type_name(type_name, ty2),
+                        term: b.term.subst_type_name(type_name, ty2),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        }
+    }
+}
+
+impl Type {
+    fn subst_name(&self, type_name: &str, ty2: &Type) -> Type {
+        match self {
+            Type::TyVar(s) => {
+                if type_name == s {
+                    ty2.clone()
+                } else {
+                    self.clone()
+                }
+            }
+            Type::TyRecord(tyfs) => Type::TyRecord(
+                tyfs.iter()
+                    .map(|tyf| TyField {
+                        label: tyf.label.clone(),
+                        ty: tyf.ty.subst_name(type_name, ty2),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            Type::TyTagging(tyfs) => Type::TyTagging(
+                tyfs.iter()
+                    .map(|tyf| TyField {
+                        label: tyf.label.clone(),
+                        ty: tyf.ty.subst_name(type_name, ty2),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            _ => self.clone(),
+        }
+    }
+}
+
+impl PTag {
+    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> PTag {
+        PTag {
+            ty: self.ty.subst_name(type_name, ty2),
+            label: self.label.clone(),
+            args: self.args.clone(),
+        }
     }
 }
 
@@ -167,7 +270,7 @@ fn parse_tytagging(i: &str) -> IResult<&str, Type> {
     Ok((i, Type::TyTagging(fields)))
 }
 
-/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyrecord> | <tytagging> | <tySelf>
+/// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyvar> | <tyrecord> | <tytagging> | <tySelf>
 fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     preceded(
         multispace0,
@@ -175,6 +278,7 @@ fn parse_tyatom(i: &str) -> IResult<&str, Type> {
             map(tag("Bool"), |_| Type::Bool),
             map(tag("Unit"), |_| Type::Unit),
             map(tag("Self"), |_| Type::TySelf),
+            map(parse_ident, Type::TyVar),
             parse_tytagging,
             parse_tyrecord,
             parse_tyencl,
@@ -411,16 +515,29 @@ fn parse_branch(i: &str) -> IResult<&str, Branch> {
     let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 
-    let renamed = args.iter().fold(t.clone(), |acc, arg| {
-        acc.shift(1)
-            .expect("plus shift does not fail")
-            .subst_name(arg.as_str())
-    });
+    let (t_renamed, args_renamed) =
+        args.iter()
+            .enumerate()
+            .fold((t.clone(), vec![]), |acc, (i, arg)| {
+                let mut argsacc = acc.1;
+                argsacc.push((args.len() - 1 - i).to_string());
+                (
+                    acc.0
+                        .shift(1)
+                        .expect("plus shift does not fail")
+                        .subst_name(arg.as_str()),
+                    argsacc,
+                )
+            });
     Ok((
         i,
         Branch {
-            term: renamed,
-            pat: PTag { ty, label, args },
+            term: t_renamed,
+            ptag: PTag {
+                ty,
+                label,
+                args: args_renamed,
+            },
         },
     ))
 }
@@ -436,6 +553,18 @@ fn parse_case(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, tag("of")).parse(i)?;
     let (i, branches) = preceded(multispace0, parse_branches).parse(i)?;
     Ok((i, Term::Case(Box::new(t), branches)))
+}
+
+/// <lettype> ::= "type" <ident> "=" <type> "in" <term>
+fn parse_lettype(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("type")).parse(i)?;
+    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    let renamed = t.subst_type_name(name.as_str(), &ty);
+    Ok((i, renamed))
 }
 
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
@@ -465,6 +594,7 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
+            parse_lettype,
             parse_case,
             parse_let,
             parse_if,
@@ -710,7 +840,7 @@ case <Bool->Self, Unit->Self>:::0 true of
         )),
         vec![
             Branch {
-                pat: PTag {
+                ptag: PTag {
                     ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
@@ -722,12 +852,12 @@ case <Bool->Self, Unit->Self>:::0 true of
                         },
                     ]),
                     label: "0".to_string(),
-                    args: vec!["b".to_string()],
+                    args: vec!["0".to_string()],
                 },
                 term: Term::Var(0),
             },
             Branch {
-                pat: PTag {
+                ptag: PTag {
                     ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
@@ -739,7 +869,7 @@ case <Bool->Self, Unit->Self>:::0 true of
                         },
                     ]),
                     label: "1".to_string(),
-                    args: vec!["u".to_string()],
+                    args: vec!["0".to_string()],
                 },
                 term: Term::False,
             },
