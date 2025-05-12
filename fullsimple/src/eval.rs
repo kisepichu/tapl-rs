@@ -176,8 +176,41 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (v1, t2) if v1.isval() => term_subst(0, v1, t2)?.shift(-1),
             _ => Ok(Term::Let(Box::new(eval1(t1)?), t2.clone())),
         },
-        Term::Case(v, _bs) if v.isval() => {
-            todo!();
+        Term::Case(v, bs) if v.isval() => {
+            fn tagapp_to_vec(t: &Term) -> Result<Vec<Term>, String> {
+                match t.clone() {
+                    Term::App(l, r) => {
+                        let mut v = tagapp_to_vec(&l)?;
+                        v.push(*r);
+                        Ok(v)
+                    }
+                    Term::Tagging(_) => Ok(vec![t.clone()]),
+                    _ => Err(format!(
+                        "internal error: expected tagging or app, but got {}",
+                        t
+                    )),
+                }
+            }
+            let v = tagapp_to_vec(v)?;
+            let labelv0 = {
+                if let Term::Tagging(tag) = &v[0] {
+                    tag.label.clone()
+                } else {
+                    return Err(format!(
+                        "internal error: expected tagging, but got {}",
+                        v[0]
+                    ));
+                }
+            };
+            let bj = bs
+                .iter()
+                .find(|b| b.pat.label == labelv0)
+                .ok_or(format!("internal error: no branch found for {}", labelv0))?;
+            let mut t = bj.term.clone();
+            for vv in v.iter().skip(1).rev() {
+                t = term_subst_top(vv, &t)?;
+            }
+            Ok(t)
         }
         _ => Err("eval1: no rule applies".to_string()),
     }
