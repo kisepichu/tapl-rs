@@ -1,6 +1,6 @@
 use num::FromPrimitive;
 
-use crate::syntax::term::{Field, Term};
+use crate::syntax::term::{Field, Tag, Term};
 
 impl Term {
     pub fn shift(&self, d: isize) -> Result<Term, String> {
@@ -54,7 +54,7 @@ impl Term {
                     Box::new(walk(t1, d, c)?),
                     Box::new(walk(t2, d, c + 1)?),
                 )),
-                Term::Tagging(ty, label) => Ok(Term::Tagging(ty.clone(), label.clone())),
+                Term::Tagging(_) => Ok(t.clone()),
                 Term::Case(_t, _branches) => {
                     todo!()
                 }
@@ -111,7 +111,10 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
             Term::Plet(_pat, _t1, _t2) => {
                 todo!()
             }
-            Term::Tagging(_ty, _label) => {
+            Term::Tagging(Tag {
+                ty: _ty,
+                label: _label,
+            }) => {
                 todo!()
             }
             Term::Case(_t, _branches) => {
@@ -174,7 +177,7 @@ fn eval1(t: &Term) -> Result<Term, String> {
             _ => Ok(Term::Let(Box::new(eval1(t1)?), t2.clone())),
         },
         Term::Case(v, _bs) if v.isval() => {
-            todo!()
+            todo!();
         }
         _ => Err("eval1: no rule applies".to_string()),
     }

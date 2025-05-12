@@ -4,9 +4,9 @@ use rstest::rstest;
 
 use crate::syntax::{
     context::Context,
-    pattern::Pattern,
+    pattern::{PTag, Pattern},
     pattype::PatType,
-    term::Term,
+    term::{Tag, Term},
     r#type::{TyField, Type},
 };
 
@@ -117,7 +117,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Plet(_p, _t1, _t2) => {
             todo!()
         }
-        Term::Tagging(ty, label) => {
+        Term::Tagging(Tag { ty, label }) => {
             if let Type::TyTagging(tyfields) = ty {
                 let ty_ = tyfields
                     .iter()
@@ -162,13 +162,13 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 Type::TyTagging(tyfields) => {
                     let mut tyt_: Option<Type> = None;
                     for (bi, f0i) in bs.iter().zip(tyfields) {
-                        let ptybi = pat_type_of(ctx, &bi.pat)?;
+                        let ptybi = pat_type_of(ctx, &Pattern::Tagging(bi.pat.clone()))?;
 
-                        if let Pattern::Tagging(_, label, _) = &bi.pat {
-                            if label != &f0i.label {
+                        {
+                            if bi.pat.label != f0i.label {
                                 return Err(format!(
                                     "type check failed: {}\n, case expression currently requires exact ordering of labels.\n  expected {}, but found {}",
-                                    t, f0i.label, label
+                                    t, f0i.label, bi.pat.label
                                 ));
                             }
                         }
@@ -233,7 +233,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 context: ctx_,
             })
         }
-        Pattern::Tagging(ty, label, args) => {
+        Pattern::Tagging(PTag { ty, label, args }) => {
             if let Type::TyTagging(tyfields) = ty {
                 let ty0 = tyfields
                     .iter()

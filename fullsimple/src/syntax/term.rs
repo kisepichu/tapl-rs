@@ -1,6 +1,9 @@
 use std::fmt;
 
-use super::{pattern::Pattern, r#type::Type};
+use super::{
+    pattern::{PTag, Pattern},
+    r#type::Type,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
@@ -10,8 +13,26 @@ pub struct Field {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Branch {
-    pub pat: Pattern,
+    pub pat: PTag,
     pub term: Term,
+}
+
+impl fmt::Display for Branch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "| {} => {}", self.pat, self.term)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tag {
+    pub ty: Type,
+    pub label: String,
+}
+
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:::{}", self.ty, self.label)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,7 +45,7 @@ pub enum Term {
     True,
     False,
     Record(Vec<Field>),
-    Tagging(Type, String),
+    Tagging(Tag),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Box<Term>, Box<Term>),
     #[allow(unused)]
@@ -118,17 +139,11 @@ impl fmt::Display for Term {
                         )
                     }
                 }
-                Term::Tagging(ty, l) => format!("{}:::{}", ty, l),
+                Term::Tagging(tag) => tag.to_string(),
                 Term::Case(t, bs) => {
                     format!("case {} of {}", t, {
                         bs.iter()
-                            .map(|b| {
-                                format!(
-                                    "| {} => {} ",
-                                    &b.pat.to_string(),
-                                    print(&b.term, false, false),
-                                )
-                            })
+                            .map(|b| b.to_string())
                             .fold("".to_string(), |acc, x| acc + &x)
                     })
                 }
@@ -143,11 +158,11 @@ impl Term {
         match self {
             Term::Unit | Term::True | Term::False | Term::Abs(_, _) => true,
             Term::Record(fields) => fields.iter().all(|field| field.term.isval()),
-            Term::Tagging(_ty, _l) => true,
+            Term::Tagging(_tag) => true,
             Term::App(t1, t2) => {
                 fn is_vtag(t: &Term) -> bool {
                     match t {
-                        Term::Tagging(_, _) => true,
+                        Term::Tagging(_) => true,
                         Term::App(t1, t2) => is_vtag(t1) && t2.isval(),
                         _ => false,
                     }

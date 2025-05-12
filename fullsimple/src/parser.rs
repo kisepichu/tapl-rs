@@ -1,12 +1,12 @@
 use std::iter::once;
 
 use crate::syntax::{
-    pattern::{PatField, Pattern},
-    term::{Branch, Field, Term},
+    pattern::{PTag, PatField, Pattern},
+    term::{Branch, Field, Tag, Term},
     r#type::{TyField, Type},
 };
 use nom::{
-    Err, IResult, Parser,
+    IResult, Parser,
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, char, digit1, multispace0},
@@ -65,7 +65,7 @@ impl Term {
                 Term::Plet(_pat, _t1, _t2) => {
                     todo!()
                 }
-                Term::Tagging(ty, label) => Term::Tagging(ty.clone(), label.clone()),
+                Term::Tagging(_) => t.clone(),
                 Term::Case(_t, _branches) => {
                     todo!()
                 }
@@ -222,12 +222,12 @@ fn parse_type_space(i: &str) -> IResult<&str, Type> {
 }
 
 /// <pattagging> ::= <ty> ":::" <parse_labelorindexcase <Bool, Unit>:::0 true of | <Bool, Unit>:::0 b:Bool => true | <Bool, Unit>:::1 u:Unit => false> | <pattagging> <pat>
-fn parse_pattagging(i: &str) -> IResult<&str, Pattern> {
+fn parse_pattagging(i: &str) -> IResult<&str, PTag> {
     let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
     let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
     let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
     let (i, args) = many0(preceded(multispace0, parse_ident)).parse(i)?;
-    Ok((i, Pattern::Tagging(ty, label, args)))
+    Ok((i, PTag { ty, label, args }))
 }
 
 #[allow(unused)]
@@ -290,7 +290,11 @@ fn parse_patvar(i: &str) -> IResult<&str, Pattern> {
 fn parse_pat(i: &str) -> IResult<&str, Pattern> {
     preceded(
         multispace0,
-        alt((parse_patvar, parse_pattagging, parse_patrecord)),
+        alt((
+            parse_patvar,
+            parse_pattagging.map(Pattern::Tagging),
+            parse_patrecord,
+        )),
     )
     .parse(i)
 }
@@ -325,11 +329,11 @@ fn parse_var(i: &str) -> IResult<&str, Term> {
 }
 
 /// <tagging> ::= <ty> ":::" <labelorindex>
-fn parse_tagging(i: &str) -> IResult<&str, Term> {
+fn parse_tagging(i: &str) -> IResult<&str, Tag> {
     let (i, ty) = preceded(multispace0, parse_type).parse(i)?;
     let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
     let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
-    Ok((i, Term::Tagging(ty, label)))
+    Ok((i, Tag { ty, label }))
 }
 
 /// <field> ::= <label> "=" <term> | <term>
@@ -403,24 +407,22 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
 
 fn parse_branch(i: &str) -> IResult<&str, Branch> {
     let (i, _) = preceded(multispace0, char('|')).parse(i)?;
-    let (i, pat) = preceded(multispace0, parse_pattagging).parse(i)?;
+    let (i, PTag { ty, label, args }) = preceded(multispace0, parse_pattagging).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 
-    if let Pattern::Tagging(_, _, args) = pat.clone() {
-        let renamed = args.iter().fold(t.clone(), |acc, arg| {
-            acc.shift(1)
-                .expect("plus shift does not fail")
-                .subst_name(arg.as_str())
-        });
-        Ok((i, Branch { pat, term: renamed }))
-    } else {
-        println!("parse_branch: not a tagging pattern");
-        Err(Err::Error(nom::error::Error::new(
-            i,
-            nom::error::ErrorKind::Fail,
-        )))
-    }
+    let renamed = args.iter().fold(t.clone(), |acc, arg| {
+        acc.shift(1)
+            .expect("plus shift does not fail")
+            .subst_name(arg.as_str())
+    });
+    Ok((
+        i,
+        Branch {
+            term: renamed,
+            pat: PTag { ty, label, args },
+        },
+    ))
 }
 /// <branches> ::= "|" <pat> "=>" <term> <branches> | null
 fn parse_branches(i: &str) -> IResult<&str, Vec<Branch>> {
@@ -466,7 +468,7 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
             parse_case,
             parse_let,
             parse_if,
-            parse_tagging,
+            parse_tagging.map(Term::Tagging),
             parse_record,
             parse_false,
             parse_true,
@@ -686,45 +688,64 @@ case <Bool->Self, Unit->Self>:::0 true of
   | <Bool->Self, Unit->Self>:::0 b => b
   | <Bool->Self, Unit->Self>:::1 u => false
     ",
-    Some(
-        Term::Case(
-            Box::new(Term::App(Box::new(Term::Tagging(Type::TyTagging([TyField {
+    Some(Term::Case(
+        Box::new(Term::App(
+            Box::new(Term::Tagging(Tag {
+                ty: Type::TyTagging(
+                    [
+                        TyField {
+                            label: "0".to_string(),
+                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                        },
+                        TyField {
+                            label: "1".to_string(),
+                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                        },
+                    ]
+                    .to_vec(),
+                ),
                 label: "0".to_string(),
-                ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf))
-            }, TyField {
-                label: "1".to_string(),
-                ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf))
-            }].to_vec()), "0".to_string())), Box::new(Term::True))),
-            vec![
-                Branch {
-                    pat: Pattern::Tagging(Type::TyTagging(vec![
+            })),
+            Box::new(Term::True),
+        )),
+        vec![
+            Branch {
+                pat: PTag {
+                    ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf))
+                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf))
-                        }
-                    ]), "0".to_string(), vec!["b".to_string()]),
-                    term: Term::Var(0)
+                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                        },
+                    ]),
+                    label: "0".to_string(),
+                    args: vec!["b".to_string()],
                 },
-                Branch {
-                    pat: Pattern::Tagging(Type::TyTagging(vec![
+                term: Term::Var(0),
+            },
+            Branch {
+                pat: PTag {
+                    ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf))
+                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf))
-                        }
-                    ]), "1".to_string(), vec!["u".to_string()]),
-                    term: Term::False
-                }
-            ]
-        )
-    ))]
+                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                        },
+                    ]),
+                    label: "1".to_string(),
+                    args: vec!["u".to_string()],
+                },
+                term: Term::False,
+            },
+        ],
+    ))
+)]
 #[case(r"\", None)]
 #[case(r"(", None)]
 #[case(r")", None)]

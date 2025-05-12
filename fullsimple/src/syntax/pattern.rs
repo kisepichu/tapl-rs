@@ -7,11 +7,31 @@ pub struct PatField {
     pub label: String,
     pub pat: Pattern,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PTag {
+    pub ty: Type,
+    pub label: String,
+    pub args: Vec<String>,
+}
+
+impl fmt::Display for PTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ps_str = self
+            .args
+            .iter()
+            .map(|p| format!(" {}", p))
+            .collect::<Vec<_>>()
+            .join("");
+        write!(f, "{}:::{}{}", self.ty, self.label, ps_str)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Var(String, Type),
     Record(Vec<PatField>),
-    Tagging(Type, String, Vec<String>),
+    Tagging(PTag),
 }
 
 impl fmt::Display for Pattern {
@@ -26,14 +46,7 @@ impl fmt::Display for Pattern {
                         .collect();
                     format!("{{{}}}", fields_str.join(", "))
                 }
-                Pattern::Tagging(ty, l, ps) => {
-                    let ps_str = ps
-                        .iter()
-                        .map(|p| format!(" {}", p))
-                        .collect::<Vec<_>>()
-                        .join("");
-                    format!("{}:::{}{}", ty, l, ps_str)
-                }
+                Pattern::Tagging(ptag) => ptag.to_string(),
             }
         }
         write!(f, "{}", p(self))
