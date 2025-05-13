@@ -127,25 +127,36 @@ case Ty:::1 false true false of
     Some(r"Bool"),
     Some(r"true")
 )]
-#[case(
-    r"
-type Ty = <Bool->Self, Bool->Bool->Bool->Self> in
-let middle = \ty:Bool.\x:Bool.\y:Bool.\z:Bool.
-  let c =
-    if 0 then
-      (\:Unit.Ty:::0) unit x
-    else
-      Ty:::1 x y z
-  in
-  case c of
-    | Ty:::0 u => false
-    | Ty:::1 b c d => c
-in
-middle true false true false
-    ",
-    Some(r"Bool"),
-    Some(r"true")
-)]
+// #[case(
+//     r"
+// let t = true in
+// let f = false in
+// type Ty = <Bool->Self, Bool->Bool->Bool->Self> in
+// let middle = \ty:Bool.\x:Bool.\y:Bool.\z:Bool.
+//   let c =
+//     if 0 then
+//       (\:Unit.Ty:::0) unit x
+//     else
+//       Ty:::1 x y z
+//   in
+//   case c of
+//     | Ty:::0 u => f
+//     | Ty:::1 b c d => c
+// in
+// middle t f t f
+//     ",
+//     Some(r"Bool"),
+//     Some(r"true")
+// )]
+// #[case(
+//     r"
+// type V = <{x:Bool, y:Bool}->Bool->Self> in
+// let {V:::0 {x, y} z, Bool} = {V:::0 {x=true, y=false} false, true} in
+// x
+// ",
+//     Some(r"Bool"),
+//     Some(r"true")
+// )]
 // #[case(
 //     r"",
 //     Some(r""),

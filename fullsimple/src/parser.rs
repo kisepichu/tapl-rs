@@ -487,6 +487,17 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::Record(fields)))
 }
 
+#[allow(unused)]
+fn parse_plet(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, pat) = preceded(multispace0, parse_pat).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    todo!();
+}
+
 /// <let> ::= "let" <bound> "=" <term> "in" <term>
 fn parse_let(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
@@ -589,13 +600,14 @@ fn parse_encl(i: &str) -> IResult<&str, Term> {
     delimited(char('('), parse_term_space, char(')')).parse(i)
 }
 
-/// <atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
+/// <atom> ::= <encl> | <abs> | <if> | <let> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
 fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
             parse_lettype,
             parse_case,
+            parse_plet,
             parse_let,
             parse_if,
             parse_tagging.map(Term::Tagging),
@@ -876,6 +888,18 @@ case <Bool->Self, Unit->Self>:::0 true of
         ],
     ))
 )]
+#[case(
+    r"let x = true in x",
+    Some(Term::Let(Box::new(Term::True), Box::new(Term::Var(0))))
+)]
+// #[case(
+//     r"let x:Bool = true in x",
+//     Some(Term::Plet(
+//         Pattern::Var("x".to_string(), Type::Bool),
+//         Box::new(Term::True),
+//         Box::new(Term::Var(0))
+//     ))
+// )]
 #[case(r"\", None)]
 #[case(r"(", None)]
 #[case(r")", None)]

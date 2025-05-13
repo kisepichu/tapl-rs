@@ -20,12 +20,13 @@ $ cargo run --bin fullsimple
 <app>  ::= <postfix> <app> | <postfix>
 <postfix> ::= <atom> <projection> | <atom>
 <projection> ::= "." <labelorindex>
-<atom> ::= <encl> | <abs> | <if> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging> | <lettype>
+<atom> ::= <encl> | <abs> | <if> | <let> | <plet> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging> | <lettype>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 <lettype> ::= "type" <ident> "=" <type> "in" <term>
 <case> ::= "case" <term> "of" <branches>
 <let> ::= "let" <bound> "=" <term> "in" <term>
+<plet> ::= "let" <pat> "=" <term> "in" <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
 <branches> ::= "|" <pattagging> "=>" <term> <branches> | null
 <record> ::= "{" <inner> "}"
@@ -238,13 +239,15 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \\
 \frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
 \\
+\frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \vdash p: T_1\mathord\Rightarrow\varDelta \quad \uparrow^{|\varDelta|}\Gamma, \varDelta \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{plet}\ p = t_1 \ \mathrm{in}\ t_2: T_2} \quad &(\text{T-PLET}) \\
+\\
 \frac{\forall i, \Gamma \vdash t_i\mathord:T_i}{\Gamma \vdash \{l_i\mathord=t_i,^{i\in 1..n}\}: \{l_i\mathord=T_i,^{i\in 1..n}\}} \quad & \text{(T-RCD)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord: \{l_i\mathord=T_i,^{i\in 1..n}\}}{\Gamma \vdash t_1.l_j : T_j} \quad & \text{(T-PROJ)} \\
 \\
 \frac{}{\Gamma \vdash \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord{:::}l_j : T_j} \quad & \text{(T-VARIANT)} \\
 \\
-\frac{\vdash t\mathord:\langle l_i\mathord:T_i,^{i \in 1..n}\rangle \quad \forall ^{i\in n}\vdash p_i : \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord\Rightarrow \varDelta_i\ \land\ \varGamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
+\frac{\vdash t\mathord:\langle l_i\mathord:T_i,^{i \in 1..n}\rangle \quad \forall ^{i\in n}\vdash p_i : \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord\Rightarrow \varDelta_i\ \land\ \uparrow^{|\varDelta_i|}\Gamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
 \\
 \end{align*}
 ```

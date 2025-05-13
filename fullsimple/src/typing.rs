@@ -114,8 +114,17 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             let ctx_ = ctx.clone().shift_and_push0(ty1);
             type_of(&ctx_, t2)
         }
-        Term::Plet(_p, _t1, _t2) => {
-            todo!()
+        Term::Plet(p, t1, t2) => {
+            let ty1 = type_of(ctx, t1)?;
+            let pty = pat_type_of(ctx, p)?;
+            let ctx_ = ctx.clone().concat(pty.context);
+            if pty.ty != ty1 {
+                return Err(format!(
+                    "type check failed: {}\n  pattern type {} does not match term type {}",
+                    t, pty.ty, ty1
+                ));
+            }
+            type_of(&ctx_, t2)
         }
         Term::Tagging(Tag { ty, label }) => {
             if let Type::TyTagging(tyfields) = ty {
