@@ -1,6 +1,6 @@
 use num::FromPrimitive;
 
-use crate::syntax::term::{Field, Tag, Term};
+use crate::syntax::term::{Branch, Field, Term};
 
 impl Term {
     pub fn shift(&self, d: isize) -> Result<Term, String> {
@@ -49,14 +49,22 @@ impl Term {
                     Box::new(walk(t1, d, c)?),
                     Box::new(walk(t2, d, c + 1)?),
                 )),
-                Term::Plet(pat, t1, t2) => Ok(Term::Plet(
-                    pat.clone(),
-                    Box::new(walk(t1, d, c)?),
-                    Box::new(walk(t2, d, c + 1)?),
-                )),
+                Term::Plet(_pat, _t1, _t2) => {
+                    todo!();
+                }
                 Term::Tagging(_) => Ok(t.clone()),
-                Term::Case(_t, _branches) => {
-                    todo!()
+                Term::Case(t, bs) => {
+                    let t = walk(t, d, c)?;
+                    let bs = bs
+                        .iter()
+                        .map(|b| {
+                            Ok::<_, String>(Branch {
+                                ptag: b.ptag.clone(),
+                                term: walk(&b.term, d, c + b.ptag.args.len())?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Term::Case(Box::new(t), bs))
                 }
             }
         }
@@ -111,14 +119,19 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
             Term::Plet(_pat, _t1, _t2) => {
                 todo!()
             }
-            Term::Tagging(Tag {
-                ty: _ty,
-                label: _label,
-            }) => {
-                todo!()
-            }
-            Term::Case(_t, _branches) => {
-                todo!()
+            Term::Tagging(_) => Ok(t.clone()),
+            Term::Case(t, bs) => {
+                let t = walk(j, s, c, t)?;
+                let bs = bs
+                    .iter()
+                    .map(|b| {
+                        Ok::<_, String>(Branch {
+                            ptag: b.ptag.clone(),
+                            term: walk(j, s, c + b.ptag.args.len() as isize, &b.term)?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Term::Case(Box::new(t), bs))
             }
         }
     }
@@ -212,6 +225,7 @@ fn eval1(t: &Term) -> Result<Term, String> {
             }
             Ok(t)
         }
+        Term::Case(t, bs) => eval1(t).map(|t1| Term::Case(Box::new(t1), bs.clone())),
         _ => Err("eval1: no rule applies".to_string()),
     }
 }
