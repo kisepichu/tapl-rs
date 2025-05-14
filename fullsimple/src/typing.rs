@@ -4,7 +4,7 @@ use rstest::rstest;
 
 use crate::syntax::{
     context::Context,
-    pattern::{PTag, Pattern},
+    pattern::{PTmpTag, Pattern},
     pattype::PatType,
     term::{Tag, Term},
     r#type::{TyField, Type},
@@ -171,7 +171,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 Type::TyTagging(tyfields) => {
                     let mut tyt_: Option<Type> = None;
                     for (bi, f0i) in bs.iter().zip(tyfields) {
-                        let ptybi = pat_type_of(ctx, &Pattern::Tagging(bi.ptag.clone()))?;
+                        let ptybi = pat_type_of(ctx, &Pattern::TmpTagging(bi.ptag.clone()))?;
 
                         {
                             if bi.ptag.label != f0i.label {
@@ -242,7 +242,11 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 context: ctx_,
             })
         }
-        Pattern::Tagging(PTag { ty, label, args }) => {
+        Pattern::TmpTagging(PTmpTag {
+            ty,
+            label,
+            nargs: args,
+        }) => {
             if let Type::TyTagging(tyfields) = ty {
                 let ty0 = tyfields
                     .iter()
@@ -267,10 +271,13 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                         ty => vec![ty],
                     }
                 }
+                let n = args
+                    .clone()
+                    .map_err(|_| format!("internal error: {}\n  not renamed", p))?;
                 let tyargs = tyarr_to_vec(ty0);
-                for (arg, tya) in args.iter().zip(tyargs) {
+                for (i, tya) in (0..n).rev().zip(tyargs) {
                     if let Type::Arr(ty1, ty2) = pty.ty {
-                        let ptyarg = pat_type_of(ctx, &Pattern::Var(arg.clone(), *ty1.clone()))?;
+                        let ptyarg = pat_type_of(ctx, &Pattern::Var(i.to_string(), *ty1.clone()))?;
                         pty = PatType {
                             ty: *ty2.clone(),
                             add: pty.add + ptyarg.add,
@@ -279,7 +286,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                     } else {
                         return Err(format!(
                             "type check failed: {}\n  expected arrow type, but found {}",
-                            arg, ty
+                            p, ty
                         ));
                     }
                 }

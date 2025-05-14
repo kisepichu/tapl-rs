@@ -24,11 +24,11 @@ $ cargo run --bin fullsimple
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 <lettype> ::= "type" <ident> "=" <type> "in" <term>
-<case> ::= "case" <term> "of" <branches>
+<case> ::= "case" <term> "of" <armes>
 <let> ::= "let" <bound> "=" <term> "in" <term>
 <plet> ::= "let" <pat> "=" <term> "in" <term>
 <if> ::= "if" <term> "then" <term> "else" <term>
-<branches> ::= "|" <pattagging> "=>" <term> <branches> | null
+<arms> ::= "|" <pattagging> "=>" <term> <arms> | null
 <record> ::= "{" <inner> "}"
 <inner> ::= <fieldseq> | <notrailing>
 <notrailing> ::= <fieldseq> <field>
@@ -108,10 +108,9 @@ v_{\mathrm{tag}} ::=& &\quad (\text{tagging value}) \\
 p ::=&   &\quad (\text{patterns}) \\
   \quad \mid\ & x\mathord{:}T &\quad (\text{variable pattern}) \\
   \quad \mid\ & \{l_i\mathord=p_i^{i\in1..n}\} &\quad (\text{record pattern}) \\
-  \quad \mid\ & p_\mathrm{tag} &\quad (\text{tagging pattern}) \\
+  \quad \mid\ & p_{\mathrm{tag}} &\quad (\text{tagging pattern}) \\
 p_{\mathrm{tag}} ::=& &\quad (\text{tagging pattern}) \\
-  \quad \mid\ &T\mathord{:::}l &\quad (\text{tagging}) \\
-  \quad \mid\ &p_\mathrm{tag}\ x &\quad (\text{tagging application}) \\
+  \quad \mid\ & T\mathord{:::}l\ n\mathord-1\ n\mathord-2\ \dots \ 0 &\quad (\text{tagging}) \\
   \\
 
 T ::=&   &\quad (\text{types}) \\
@@ -185,6 +184,10 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \frac{}{\mathrm{let}\ v_1\ \mathrm{in}\ t_2 \rightarrow \uparrow^{-1}[0\mapsto v_1]\uparrow^{1}t_2} \quad &(\text{E-LETV}) \\
 \\
 \frac{t_1\rightarrow t_1'}{\mathrm{let}\ t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{let}\ t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-LET}) \\
+\\
+\frac{}{\mathrm{plet}\ p=v_1\ \mathrm{in}\ t_2 \rightarrow \mathit{match}(p, v_1)t_2} \quad &(\text{E-PLETV}) \\
+\\
+\frac{t_1\rightarrow t_1'}{\mathrm{let}\ t_1\ \mathrm{in}\ t_2 \rightarrow \mathrm{plet}\ p=t_1'\ \mathrm{in}\ t_2} \quad &(\text{E-PLET}) \\
 \\
 \frac{}{\{l_i\mathord=v_i,^{i\in 1..n}\}.l_j \rightarrow v_j} \quad &(\text{E-PROJRCD}) \\
 \\

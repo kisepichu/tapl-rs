@@ -1,7 +1,7 @@
 use std::fmt;
 
 use super::{
-    pattern::{PTag, Pattern},
+    pattern::{PTmpTag, Pattern},
     r#type::Type,
 };
 
@@ -12,12 +12,12 @@ pub struct Field {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Branch {
-    pub ptag: PTag,
+pub struct Arm {
+    pub ptag: PTmpTag,
     pub term: Term,
 }
 
-impl fmt::Display for Branch {
+impl fmt::Display for Arm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "| {} => {}", self.ptag, self.term)
     }
@@ -51,7 +51,7 @@ pub enum Term {
     #[allow(unused)]
     Plet(Pattern, Box<Term>, Box<Term>),
     Projection(Box<Term>, String),
-    Case(Box<Term>, Vec<Branch>),
+    Case(Box<Term>, Vec<Arm>),
 }
 
 impl fmt::Display for Term {
