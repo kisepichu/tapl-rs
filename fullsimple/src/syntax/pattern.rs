@@ -46,6 +46,20 @@ impl PTmpTag {
     }
 }
 
+impl Pattern {
+    pub fn len(&self) -> usize {
+        match self {
+            Pattern::Var(_, _) => 1,
+            Pattern::Record(pfs) => pfs.iter().fold(0, |acc, pf| acc + pf.pat.len()),
+            Pattern::TmpTagging(ptag) => ptag.len(),
+        }
+    }
+    #[allow(unused)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Var(String, Type),

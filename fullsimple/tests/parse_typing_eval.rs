@@ -132,15 +132,15 @@ case Ty:::1 false true false of
 // let t = true in
 // let f = false in
 // type Ty = <Bool->Self, Bool->Bool->Bool->Self> in
-// let middle = \ty:Bool.\x:Bool.\y:Bool.\z:Bool.
+// let middle = \k:Bool.\x:Bool.\y:Bool.\z:Bool.
 //   let c =
-//     if 0 then
+//     if k then
 //       (\:Unit.Ty:::0) unit x
 //     else
 //       Ty:::1 x y z
 //   in
 //   case c of
-//     | Ty:::0 u => f
+//     | Ty:::0 a => f
 //     | Ty:::1 b c d => c
 // in
 // middle t f t f
@@ -157,11 +157,7 @@ case Ty:::1 false true false of
 //     Some(r"Bool"),
 //     Some(r"true")
 // )]
-// #[case(
-//     r"",
-//     Some(r""),
-//     Some(r"")
-// )]
+// #[case(r"", Some(r""), Some(r""))]
 #[case(r"", None, None)]
 fn test_parse_typing_eval(
     #[case] input: &str,
@@ -176,9 +172,9 @@ fn test_parse_typing_eval(
     println!("input= {}", input);
 
     let ctx = Context::default();
-    let t = parse(input).ok();
+    let actual = parse(input).ok();
 
-    if let Some(t) = t {
+    if let Some(t) = actual {
         let ty = type_of(&ctx, &t).map(|t| t.to_string()).ok();
         println!("ty= {:?}", ty);
 

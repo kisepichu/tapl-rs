@@ -49,11 +49,10 @@ impl Term {
                     Box::new(walk(t1, d, c)?),
                     Box::new(walk(t2, d, c + 1)?),
                 )),
-                Term::Plet(_pat, t1, _t2) => {
-                    let _t1 = walk(t1, d, c)?;
-                    todo!();
-                    // let t2 = walk(t2, d, c + 0)?;
-                    // Ok(Term::Plet(pat.clone(), Box::new(t1), Box::new(t2)))
+                Term::Plet(p, t1, t2) => {
+                    let t1 = walk(t1, d, c)?;
+                    let t2 = walk(t2, d, c + p.len())?;
+                    Ok(Term::Plet(p.clone(), Box::new(t1), Box::new(t2)))
                 }
                 Term::Tagging(_) => Ok(t.clone()),
                 Term::Case(t, bs) => {
@@ -119,11 +118,10 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c + 1, t2)?),
             )),
-            Term::Plet(_pat, t1, _t2) => {
-                let _t1 = walk(j, s, c, t1)?;
-                todo!();
-                // let t2 = walk(j, s, c + 0, &t2)?;
-                // Ok(Term::Plet(pat.clone(), Box::new(t1), Box::new(t2)))
+            Term::Plet(p, t1, t2) => {
+                let t1 = walk(j, s, c, t1)?;
+                let t2 = walk(j, s, c + p.len() as isize, t2)?;
+                Ok(Term::Plet(p.clone(), Box::new(t1), Box::new(t2)))
             }
             Term::Tagging(_) => Ok(t.clone()),
             Term::Case(t, bs) => {

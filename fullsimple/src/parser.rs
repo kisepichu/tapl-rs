@@ -62,8 +62,11 @@ impl Term {
                     let t2 = walk(t2, z, c + 1);
                     Term::Let(Box::new(t1), Box::new(t2))
                 }
-                Term::Plet(_pat, _t1, _t2) => {
-                    todo!()
+                Term::Plet(p, t1, t2) => {
+                    let n = p.len();
+                    let t1 = walk(t1, z, c + n);
+                    let t2 = walk(t2, z, c + n);
+                    Term::Plet(p.clone(), Box::new(t1), Box::new(t2))
                 }
                 Term::Tagging(_) => t.clone(),
                 Term::Case(t, bs) => Term::Case(
@@ -117,8 +120,11 @@ impl Term {
                 let t2 = t2.subst_type_name(type_name, ty2);
                 Term::Let(Box::new(t1), Box::new(t2))
             }
-            Term::Plet(_pat, _t1, _t2) => {
-                todo!()
+            Term::Plet(p, t1, t2) => {
+                let p = p.subst_type_name(type_name, ty2);
+                let t1 = t1.subst_type_name(type_name, ty2);
+                let t2 = t2.subst_type_name(type_name, ty2);
+                Term::Plet(p, Box::new(t1), Box::new(t2))
             }
             Term::Tagging(tag) => Term::Tagging(Tag {
                 ty: tag.ty.subst_name(type_name, ty2),
@@ -226,6 +232,23 @@ impl PTmpTag {
             ty: self.ty.subst_name(type_name, ty2),
             label: self.label.clone(),
             nargs: self.nargs.clone(),
+        }
+    }
+}
+
+impl Pattern {
+    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Pattern {
+        match self {
+            Pattern::Var(label, ty) => Pattern::Var(label.clone(), ty.subst_name(type_name, ty2)),
+            Pattern::Record(pfs) => Pattern::Record(
+                pfs.iter()
+                    .map(|pf| PatField {
+                        label: pf.label.clone(),
+                        pat: pf.pat.subst_type_name(type_name, ty2),
+                    })
+                    .collect(),
+            ),
+            Pattern::TmpTagging(ptag) => Pattern::TmpTagging(ptag.subst_type_name(type_name, ty2)),
         }
     }
 }

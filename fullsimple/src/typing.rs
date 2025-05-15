@@ -165,10 +165,11 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 ))
             }
         }
-        Term::Case(t, bs) => {
-            let tyt = type_of(ctx, t)?;
+        Term::Case(t1, bs) => {
+            let tyt = type_of(ctx, t1)?;
             match tyt.clone() {
                 Type::TyTagging(tyfields) => {
+                    let mut t_: Option<Term> = None;
                     let mut tyt_: Option<Type> = None;
                     for (bi, f0i) in bs.iter().zip(tyfields) {
                         let ptybi = pat_type_of(ctx, &Pattern::TmpTagging(bi.ptag.clone()))?;
@@ -188,16 +189,23 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                             ));
                         }
                         let ctx_ = ctx.clone().concat(ptybi.context);
-                        let ty_bi = type_of(&ctx_, &bi.term)?; // todo subst name in bi.term
+                        let tybi = type_of(&ctx_, &bi.term)?;
 
                         if tyt_.is_none() {
-                            tyt_ = Some(ty_bi);
-                        } else if tyt_ != Some(ty_bi.clone()) {
+                            t_ = Some(bi.term.clone());
+                            tyt_ = Some(tybi);
+                        } else if tyt_ != Some(tybi.clone()) {
                             return Err(format!(
-                                "type check failed: {}\n  branches of case expression have different types:\n  {}, {}",
-                                t,
+                                "type check failed: {}\n  arms of case expression have different types:\n  {}: {},\n  {}: {}",
+                                t1,
+                                if let Some(t_) = t_ {
+                                    t_
+                                } else {
+                                    panic!("unreachable")
+                                },
                                 tyt_.unwrap(),
-                                ty_bi
+                                bi.term,
+                                tybi
                             ));
                         }
                     }
