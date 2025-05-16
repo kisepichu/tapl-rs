@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::r#type::Type;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -45,5 +47,18 @@ impl Context {
         } else {
             None
         }
+    }
+}
+
+impl fmt::Display for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut ctx_debug = self;
+        let mut i = 0;
+        while let Some(parent) = ctx_debug.parent.as_ref() {
+            writeln!(f, "{}: {}", i, ctx_debug.get(0).unwrap())?;
+            ctx_debug = parent;
+            i += 1;
+        }
+        writeln!(f, "{}: {}", i, ctx_debug.get(0).unwrap())
     }
 }

@@ -127,37 +127,41 @@ case Ty:::1 false true false of
     Some(r"Bool"),
     Some(r"true")
 )]
-// #[case(
-//     r"
-// let t = true in
-// let f = false in
-// type Ty = <Bool->Self, Bool->Bool->Bool->Self> in
-// let middle = \k:Bool.\x:Bool.\y:Bool.\z:Bool.
-//   let c =
-//     if k then
-//       (\:Unit.Ty:::0) unit x
-//     else
-//       Ty:::1 x y z
-//   in
-//   case c of
-//     | Ty:::0 a => f
-//     | Ty:::1 b c d => c
-// in
-// middle t f t f
-//     ",
-//     Some(r"Bool"),
-//     Some(r"true")
-// )]
+#[case(
+    r"
+let t = true in
+let f = false in
+type Ty = <Bool->Self, Bool->Bool->Bool->Self> in
+let middle = \k:Bool.\x:Bool.\y:Bool.\z:Bool.
+  let c =
+    if k then
+      (\:Unit.Ty:::0) unit x
+    else
+      Ty:::1 x y z
+  in
+  case c of
+    | Ty:::0 a => f
+    | Ty:::1 b c d => c
+in
+middle f f t f
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
 // #[case(
 //     r"
 // type V = <{x:Bool, y:Bool}->Bool->Self> in
-// let {V:::0 {x, y} z, Bool} = {V:::0 {x=true, y=false} false, true} in
-// x
+// let {V:::0 p z, Bool} = {V:::0 {x=true, y=false} false, true} in
+// p.x
 // ",
 //     Some(r"Bool"),
 //     Some(r"true")
 // )]
-// #[case(r"", Some(r""), Some(r""))]
+// #[case(
+//     r"",
+//     Some(r""),
+//     Some(r"")
+// )]
 #[case(r"", None, None)]
 fn test_parse_typing_eval(
     #[case] input: &str,

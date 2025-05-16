@@ -143,11 +143,15 @@ impl Term {
     }
     fn subst_ptag(&self, ptag: &PTmpTag) -> Result<(Term, usize), &str> {
         if let Err(args) = ptag.nargs.clone() {
-            let t_renamed = args.iter().fold(self.clone(), |acc, arg| {
-                acc.shift(1)
-                    .expect("plus shift does not fail")
-                    .subst_name(arg)
-            });
+            let t_renamed = args
+                .iter()
+                .fold(self.clone(), |acc, arg| {
+                    acc.subst_name(arg)
+                        .shift(1)
+                        .expect("plus shift does not fail")
+                })
+                .shift(-1)
+                .expect("-1 shift after +1 shift does not fail");
             Ok((t_renamed, args.len()))
         } else {
             Err("internal error: renamed before subst")
@@ -573,10 +577,13 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
 fn parse_plet(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
     let (i, p) = preceded(multispace0, parse_pat).parse(i)?;
+    println!("1");
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    println!("2");
     let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    println!("p: {}, \n t1: {}, \n t2: {}", p, t1, t2);
     let (t2_renamed, p_renamed) = t2.subst_pat(&p).map_err(|e| {
         println!("{}", e);
         nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
