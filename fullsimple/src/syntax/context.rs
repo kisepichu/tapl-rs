@@ -30,12 +30,12 @@ impl Context {
         } else if ctx.parent.is_none() {
             self.shift_and_push0(*ctx.binding.unwrap())
         } else {
-            let self_ = self.shift_and_push0(*ctx.binding.unwrap());
-            if ctx.parent.is_none() {
-                self_
+            let self_ = if ctx.parent.is_none() {
+                self
             } else {
-                self_.concat(*ctx.parent.unwrap())
-            }
+                self.concat(*ctx.parent.unwrap())
+            };
+            self_.shift_and_push0(*ctx.binding.unwrap())
         }
     }
 
@@ -59,6 +59,10 @@ impl fmt::Display for Context {
             ctx_debug = parent;
             i += 1;
         }
-        writeln!(f, "{}: {}", i, ctx_debug.get(0).unwrap())
+        if let Some(ty) = ctx_debug.get(0) {
+            writeln!(f, "{}: {}", i, ty)
+        } else {
+            writeln!(f, "None")
+        }
     }
 }

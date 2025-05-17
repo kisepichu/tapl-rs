@@ -141,59 +141,146 @@ impl Term {
             ),
         }
     }
-    fn subst_ptag(&self, ptag: &PTmpTag) -> Result<(Term, usize), &str> {
-        if let Err(args) = ptag.nargs.clone() {
-            let t_renamed = args
-                .iter()
-                .fold(self.clone(), |acc, arg| {
-                    acc.subst_name(arg)
-                        .shift(1)
-                        .expect("plus shift does not fail")
-                })
-                .shift(-1)
-                .expect("-1 shift after +1 shift does not fail");
-            Ok((t_renamed, args.len()))
-        } else {
-            Err("internal error: renamed before subst")
+    fn subst_ptag(&self, ptag: &PTmpTag, offset: usize) -> Result<(Term, PTmpTag, usize), &str> {
+        let t_renamed = ptag
+            .nargs
+            .iter()
+            .fold(self.clone(), |acc, arg| {
+                acc.subst_name(arg)
+                    .shift(1)
+                    .expect("plus shift does not fail")
+            })
+            .shift(-1)
+            .expect("-1 shift after +1 shift does not fail");
+        let args_renamed = (0..ptag.nargs.len())
+            .rev()
+            .map(|i| (i + offset).to_string())
+            .collect();
+        let ptag_renamed = PTmpTag {
+            ty: ptag.ty.clone(),
+            label: ptag.label.clone(),
+            nargs: args_renamed,
+        };
+        Ok((t_renamed, ptag_renamed, ptag.nargs.len()))
+    }
+    fn subst_label(&self, from: &str, to: &str) -> Term {
+        match &self {
+            Term::Record(fs) => Term::Record(
+                fs.iter()
+                    .map(|f| Field {
+                        label: if f.label == from {
+                            to.to_string()
+                        } else {
+                            f.label.clone()
+                        },
+                        term: f.term.subst_label(from, to),
+                    })
+                    .collect(),
+            ),
+            _ => self.clone(),
         }
     }
-    fn subst_pat(&self, p: &Pattern) -> Result<(Term, Pattern), &str> {
+    fn subst_pat(
+        &self,
+        t1: &Term,
+        p: &Pattern,
+        offset: usize,
+    ) -> Result<(Term, Term, Pattern, usize), &str> {
         match p {
             Pattern::Var(name, ty) => {
                 let t = self.subst_name(name.as_str());
-                let p = Pattern::Var("0".to_string(), ty.clone());
-                Ok((t, p))
+                let p = Pattern::Var(offset.to_string(), ty.clone());
+                Ok((t, t1.clone(), p, 1))
             }
             Pattern::Record(pfs) => {
-                let (fs, ps) = pfs
-                    .iter()
-                    .map(|pf| {
-                        let (t, p) = self.subst_pat(&pf.pat)?;
-                        Ok((
-                            Field {
+                println!(
+                    "subst_pat-----------------------\n self: {}\n t1: {}, \n p: {}, \n offset: {}",
+                    self.clone(),
+                    t1,
+                    p,
+                    offset
+                );
+
+                let mut n = pfs.iter().fold(0, |acc, pf| {
+                    acc + pf.pat.len()
+                        + if matches!(pf.pat, Pattern::Var(_, _)) {
+                            0
+                        } else {
+                            1
+                        }
+                });
+                // inside patterns
+                let (t_, t1_, pfs_r) = pfs.iter().enumerate().try_rfold(
+                    (self.clone(), t1.clone(), vec![]),
+                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
+                        Pattern::Var(label, ty) => {
+                            acc_pfs.push(PatField {
+                                label,
+                                pat: Pattern::Var((offset + i).to_string(), ty),
+                            });
+                            Ok((acc_t, acc_t1, acc_pfs))
+                        }
+                        _ => {
+                            let len = pf.pat.len();
+                            n -= len;
+                            let (acc_t_, acc_t1_, pi, ni) = acc_t
+                                .subst_pat(&acc_t1, &pf.pat, offset + n)
+                                .map_err(|_| "internal error: subst_pat")?;
+                            if ni != len {
+                                return Err("internal error: len check failed");
+                            }
+                            acc_pfs.push(PatField {
                                 label: pf.label.clone(),
-                                term: t,
-                            },
-                            PatField {
-                                label: pf.label.clone(),
-                                pat: p,
-                            },
-                        ))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .iter()
-                    .cloned()
-                    .unzip();
-                Ok((Term::Record(fs), Pattern::Record(ps)))
+                                pat: pi,
+                            });
+                            Ok((acc_t_, acc_t1_, acc_pfs))
+                        }
+                    },
+                )?;
+                // 0..n patterns
+                let (t_, t1_, pfs_r) = pfs_r.iter().rev().enumerate().rfold(
+                    (t_, t1_, vec![]),
+                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
+                        Pattern::Var(name, _) => {
+                            acc_pfs.push(PatField {
+                                label: i.to_string(),
+                                pat: pf.pat.clone(),
+                            });
+                            println!("name: {}, label: {}, acc_t1: {}", name, pf.label, acc_t1);
+                            (
+                                acc_t
+                                    .subst_name(name.as_str())
+                                    .shift(1)
+                                    .expect("plus shift does not fail"),
+                                acc_t1.subst_label(&pf.label, i.to_string().as_str()),
+                                acc_pfs,
+                            )
+                        }
+                        _ => {
+                            acc_pfs.push(PatField {
+                                label: i.to_string(),
+                                pat: pf.pat.clone(),
+                            });
+                            println!("label: {}", pf.label);
+                            (
+                                acc_t
+                                    .subst_name(&pf.label)
+                                    .shift(1)
+                                    .expect("plus shift does not fail"),
+                                acc_t1.subst_label(&pf.label, i.to_string().as_str()),
+                                acc_pfs,
+                            )
+                        }
+                    },
+                );
+                let pfs_ = pfs_r.iter().rev().cloned().collect();
+
+                println!("subst_pat t1_: {}", t1_);
+                Ok((t_, t1_, Pattern::Record(pfs_), n))
             }
             Pattern::TmpTagging(pttag) => {
-                let (t, n) = self.subst_ptag(pttag)?;
-                let ptag = PTmpTag {
-                    ty: pttag.ty.clone(),
-                    label: pttag.label.clone(),
-                    nargs: Ok(n),
-                };
-                Ok((t, Pattern::TmpTagging(ptag)))
+                let (t, ptag, n) = self.subst_ptag(pttag, offset)?;
+                Ok((t, t1.clone(), Pattern::TmpTagging(ptag), n))
             }
         }
     }
@@ -415,7 +502,7 @@ fn parse_pattagging_args(i: &str) -> IResult<&str, PTmpTag> {
         PTmpTag {
             ty,
             label,
-            nargs: Err(args),
+            nargs: args,
         },
     ))
 }
@@ -445,7 +532,8 @@ fn parse_patfield_withcomma(i: &str) -> IResult<&str, (Option<String>, Pattern)>
 fn parse_patfieldseq(i: &str) -> IResult<&str, Vec<PatField>> {
     let (i, fields) = many0(parse_patfield_withcomma).parse(i)?;
     let (i, last_field) = opt(parse_patfield).parse(i)?;
-    let fields = fields
+    println!("fields = {:?}, last_field = {:?}", fields, last_field);
+    let pfs = fields
         .into_iter()
         .chain(last_field)
         .enumerate()
@@ -454,7 +542,7 @@ fn parse_patfieldseq(i: &str) -> IResult<&str, Vec<PatField>> {
             pat,
         })
         .collect();
-    Ok((i, fields))
+    Ok((i, pfs))
 }
 
 /// <patrecord> ::= "{" <patinner> "}"
@@ -577,18 +665,18 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
 fn parse_plet(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
     let (i, p) = preceded(multispace0, parse_pat).parse(i)?;
-    println!("1");
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    println!("2");
     let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    println!("p: {}, \n t1: {}, \n t2: {}", p, t1, t2);
-    let (t2_renamed, p_renamed) = t2.subst_pat(&p).map_err(|e| {
+    let (t2_renamed, t1_renamed, p_renamed, _n) = t2.subst_pat(&t1, &p, 0).map_err(|e| {
         println!("{}", e);
         nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
     })?;
-    Ok((i, Term::Plet(p_renamed, Box::new(t1), Box::new(t2_renamed))))
+    Ok((
+        i,
+        Term::Plet(p_renamed, Box::new(t1_renamed), Box::new(t2_renamed)),
+    ))
 }
 
 /// <let> ::= "let" <bound> "=" <term> "in" <term>
@@ -619,7 +707,7 @@ fn parse_arm(i: &str) -> IResult<&str, Arm> {
     let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 
-    let (t_renamed, n) = t.subst_ptag(&ptag).map_err(|e| {
+    let (t_renamed, ptag_renamed, _) = t.subst_ptag(&ptag, 0).map_err(|e| {
         println!("{}", e);
         nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
     })?;
@@ -627,11 +715,7 @@ fn parse_arm(i: &str) -> IResult<&str, Arm> {
         i,
         Arm {
             term: t_renamed,
-            ptag: PTmpTag {
-                ty: ptag.ty,
-                label: ptag.label,
-                nargs: Ok(n),
-            },
+            ptag: ptag_renamed,
         },
     ))
 }
@@ -947,7 +1031,7 @@ case <Bool->Self, Unit->Self>:::0 true of
                         },
                     ]),
                     label: "0".to_string(),
-                    nargs: Ok(1),
+                    nargs: vec!["0".to_string()],
                 },
                 term: Term::Var(0),
             },
@@ -964,7 +1048,7 @@ case <Bool->Self, Unit->Self>:::0 true of
                         },
                     ]),
                     label: "1".to_string(),
-                    nargs: Ok(1),
+                    nargs: vec!["0".to_string()],
                 },
                 term: Term::False,
             },

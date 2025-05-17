@@ -151,7 +151,7 @@ middle f f t f
 // #[case(
 //     r"
 // type V = <{x:Bool, y:Bool}->Bool->Self> in
-// let {V:::0 p z, Bool} = {V:::0 {x=true, y=false} false, true} in
+// let {V:::0 p z, b:Bool} = {V:::0 {x=true, y=false} false, true} in
 // p.x
 // ",
 //     Some(r"Bool"),

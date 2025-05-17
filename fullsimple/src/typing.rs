@@ -13,13 +13,16 @@ use crate::syntax::{
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
-        Term::Var(xn) => match ctx.get(*xn) {
-            Some(ty) => Ok(ty.clone()),
-            None => Err(format!(
-                "type check failed: {}\n: unbound variable {}",
-                t, xn
-            )),
-        },
+        Term::Var(xn) => {
+            println!("ctx = \n{}", ctx);
+            match ctx.get(*xn) {
+                Some(ty) => Ok(ty.clone()),
+                None => Err(format!(
+                    "type check failed: {}\n: unbound variable {}",
+                    t, xn
+                )),
+            }
+        }
         Term::TmpVar(s) => Err(format!(
             "type check failed: {}\n: undefined variable: {}",
             t, s
@@ -85,6 +88,8 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                         )
                     })
             } else {
+                println!("ctx = \n{}", ctx);
+
                 Err(format!(
                     "type check failed: {}\n  expected record type, but found {}: {}",
                     t, t1, ty1
@@ -234,30 +239,65 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 context: ctx_,
             })
         }
-        Pattern::Record(patfields) => {
-            let mut tyfields: Vec<TyField> = vec![];
-            let mut add = 0;
-            let mut ctx_ = ctx.clone();
-            for pf in patfields {
-                let ty = pat_type_of(&ctx_, &pf.pat)?;
-                tyfields.push(TyField {
-                    label: pf.label.clone(),
-                    ty: ty.ty.clone(),
-                });
-                ctx_ = ctx_.shift_and_push0(ty.ty);
-                add += ty.add;
-            }
+        Pattern::Record(pfs) => {
+            // let mut tyfields: Vec<TyField> = vec![];
+            // let mut add = 0;
+            // let mut ctx_ = ctx.clone();
+            // let mut ctx_inner = Context::default();
+            // for pf in pfs {
+            //     let pty = pat_type_of(&ctx_inner, &pf.pat)?;
+            //     ctx_inner = pty.context;
+            //     add += pty.add;
+
+            //     tyfields.push(TyField {
+            //         label: pf.label.clone(),
+            //         ty: pty.ty.clone(),
+            //     });
+            //     ctx_ = ctx_.shift_and_push0(pty.ty);
+            //     add += 1;
+            // }
+            // ctx_ = ctx_.concat(ctx_inner);
+
+            // Ok(PatType {
+            //     ty: Type::TyRecord(tyfields),
+            //     add,
+            //     context: ctx_,
+            // })
+
+            let (tyf_r, add, ctx_, ctx_inner) = pfs.iter().try_rfold(
+                (vec![], 0, ctx.clone(), Context::default()),
+                |(mut acc_tyfs, acc_add, acc_ctx, acc_ctx_inner), pf| {
+                    let pty = pat_type_of(&acc_ctx_inner, &pf.pat)?;
+                    acc_tyfs.push(TyField {
+                        label: pf.label.clone(),
+                        ty: pty.ty.clone(),
+                    });
+                    Ok::<_, String>((
+                        acc_tyfs,
+                        acc_add + 1 + pty.add,
+                        acc_ctx.shift_and_push0(pty.ty),
+                        if matches!(pf.pat, Pattern::Var(_, _)) {
+                            acc_ctx_inner
+                        } else {
+                            pty.context
+                        },
+                    ))
+                },
+            )?;
+            let tyf = tyf_r.iter().rev().cloned().collect::<Vec<_>>();
+
+            println!(
+                "------\nctx:\n{},\nctx_inner:\n{},\nctx_:\n{}",
+                ctx, ctx_inner, ctx_
+            );
+
             Ok(PatType {
-                ty: Type::TyRecord(tyfields),
+                ty: Type::TyRecord(tyf),
                 add,
-                context: ctx_,
+                context: ctx.clone().concat(ctx_inner).concat(ctx_.clone()),
             })
         }
-        Pattern::TmpTagging(PTmpTag {
-            ty,
-            label,
-            nargs: args,
-        }) => {
+        Pattern::TmpTagging(PTmpTag { ty, label, nargs }) => {
             if let Type::TyTagging(tyfields) = ty {
                 let ty0 = tyfields
                     .iter()
@@ -282,9 +322,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                         ty => vec![ty],
                     }
                 }
-                let n = args
-                    .clone()
-                    .map_err(|_| format!("internal error: {}\n  not renamed", p))?;
+                let n = nargs.len();
                 let tyargs = tyarr_to_vec(ty0);
                 let mut ctx_ = ctx.clone();
                 for (i, tya) in (0..n).rev().zip(tyargs) {

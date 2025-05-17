@@ -12,33 +12,24 @@ pub struct PatField {
 pub struct PTmpTag {
     pub ty: Type,
     pub label: String,
-    pub nargs: Result<usize, Vec<String>>,
+    pub nargs: Vec<String>,
 }
 
 impl fmt::Display for PTmpTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ps_str = match &self.nargs {
-            Ok(n) => (0..*n)
-                .rev()
-                .map(|i| format!(" {}", i))
-                .collect::<Vec<_>>()
-                .join(""),
-            Err(args) => args
-                .iter()
-                .map(|arg| format!(" {}", arg))
-                .collect::<Vec<_>>()
-                .join(""),
-        };
+        let ps_str = self
+            .nargs
+            .iter()
+            .map(|arg| format!(" {}", arg))
+            .collect::<Vec<_>>()
+            .join("");
         write!(f, "{}:::{}{}", self.ty, self.label, ps_str)
     }
 }
 
 impl PTmpTag {
     pub fn len(&self) -> usize {
-        match &self.nargs {
-            Ok(n) => *n,
-            Err(args) => args.len(),
-        }
+        self.nargs.len()
     }
     #[allow(unused)]
     pub fn is_empty(&self) -> bool {
