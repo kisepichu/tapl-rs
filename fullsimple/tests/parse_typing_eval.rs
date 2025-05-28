@@ -148,15 +148,24 @@ middle f f t f
     Some(r"Bool"),
     Some(r"true")
 )]
-// #[case(
-//     r"
-// type V = <{x:Bool, y:Bool}->Bool->Self> in
-// let {V:::0 p z, b:Bool} = {V:::0 {x=true, y=false} false, true} in
-// p.x
-// ",
-//     Some(r"Bool"),
-//     Some(r"true")
-// )]
+#[case(
+    r"
+type V = <{x:Bool, y:Bool}->Bool->Self> in
+let {V:::0 p z, b:Bool} = {V:::0 {x=true, y=false} false, true} in
+p.x
+",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"
+type V = <{x:Bool, y:Bool}->Bool->Self> in
+let {V:::0 p z, b:Bool, r:{Bool, Bool}, {sx:Bool, sy:Bool}} = {V:::0 {x=true, y=false} false, true, r={false, false}, {sx=false, sy=true}} in
+p.x
+",
+    Some(r"Bool"),
+    Some(r"true")
+)]
 // #[case(
 //     r"",
 //     Some(r""),

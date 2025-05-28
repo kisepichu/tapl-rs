@@ -1,6 +1,9 @@
 use num::FromPrimitive;
 
-use crate::syntax::term::{Arm, Field, Term};
+use crate::syntax::{
+    pattern::Pattern,
+    term::{Arm, Field, Term},
+};
 
 impl Term {
     pub fn shift(&self, d: isize) -> Result<Term, String> {
@@ -193,6 +196,60 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (v1, t2) if v1.isval() => term_subst(0, v1, t2)?.shift(-1),
             _ => Ok(Term::Let(Box::new(eval1(t1)?), t2.clone())),
         },
+        Term::Plet(p, t1, t2) => match (&**t1, &**t2) {
+            (v1, t2) if v1.isval() => {
+                fn walk(p: &Pattern, v1: &Term, t2: &Term) -> Result<Term, String> {
+                    match p {
+                        Pattern::Var(_, _) => term_subst_top(v1, t2),
+                        Pattern::Record(pfs) => {
+                            let mut t2 = t2.clone();
+                            if let Term::Record(fs) = v1 {
+                                for (_pf, f) in pfs.iter().zip(fs.iter()) {
+                                    t2 = term_subst_top(&f.term, &t2)?;
+                                }
+                                for (pf, f) in pfs.iter().zip(fs.iter()) {
+                                    t2 = walk(&pf.pat, &f.term, &t2)?;
+                                }
+                                Ok(t2)
+                            } else {
+                                Err(format!("internal error: expected Record, but got {}", v1))
+                            }
+                        }
+                        Pattern::TmpTagging(ptag) => {
+                            let mut v1 = v1.clone();
+                            let mut t2 = t2.clone();
+                            for _arg in ptag.nargs.iter().rev() {
+                                if let Term::App(l, r) = v1 {
+                                    v1 = *l;
+                                    t2 = term_subst_top(&r, &t2)?;
+                                } else {
+                                    return Err(format!(
+                                        "internal error: expected tagging or app, but got {}",
+                                        v1
+                                    ));
+                                }
+                            }
+                            if let Term::Tagging(tag) = v1 {
+                                if tag.label != ptag.label {
+                                    return Err(format!(
+                                        "internal error: expected tag {}, but got {}",
+                                        ptag.label, tag.label
+                                    ));
+                                }
+                            } else {
+                                return Err(format!(
+                                    "internal error: expected tagging, but got {}",
+                                    v1
+                                ));
+                            }
+                            Ok(t2)
+                        }
+                    }
+                }
+                walk(p, v1, t2)
+            }
+            _ => Ok(Term::Plet(p.clone(), Box::new(eval1(t1)?), t2.clone())),
+        },
         Term::Case(v, bs) if v.isval() => {
             fn tagapp_to_vec(t: &Term) -> Result<Vec<Term>, String> {
                 match t.clone() {
@@ -249,7 +306,7 @@ pub fn eval(t: &Term) -> Result<Term, String> {
         }
     }
     if !t.isval() {
-        println!("soundness not hold. no rule applies but not value");
+        println!("soundness not hold. no rule applies but not a value");
     }
     Ok(t)
 }
