@@ -153,21 +153,47 @@ middle f f t f
 type V = <{x:Bool, y:Bool}->Bool->Self> in
 let {V:::0 p z, b:Bool} = {V:::0 {x=true, y=false} false, true} in
 p.x
-",
+    ",
     Some(r"Bool"),
     Some(r"true")
 )]
 #[case(
     r"
-type V = <{x:Bool, y:Bool}->Bool->Self> in
-let {V:::0 p z, b:Bool, r:{Bool, Bool}, {sx:Bool, sy:Bool}} = {V:::0 {x=true, y=false} false, true, r={false, false}, {sx=false, sy=true}} in
+type V = <a:{x:Bool, y:Bool}->Bool->Self> in
+let {V:::a p z, b:Bool, r:{Bool, Bool}, {sx:Bool, sy:Bool}} = {V:::a {x=true, y=false} false, true, r={false, false}, {sx=false, sy=true}} in
 p.x
-",
+    ",
     Some(r"Bool"),
     Some(r"true")
 )]
+#[case(
+    r"
+type N = Unit in
+type Shape = Circle N N N + Rectangle N N N N in
+let iscircle = \s:Shape.
+  case s of
+    | Shape:::Circle r x y => x; y; r; true
+    | Shape:::Rectangle x1 y1 x2 y2 => false
+in
+iscircle (Shape:::Circle unit unit unit)
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"
+type N = Bool in
+type Pair = N * N in
+let swap = \p:Pair. {p.1, p.0} in
+swap {true, false}
+    ",
+    Some(r"{0:Bool, 1:Bool}"),
+    Some(r"{0=false, 1=true}")
+)]
 // #[case(
-//     r"",
+//     r"
+//
+//     ",
 //     Some(r""),
 //     Some(r"")
 // )]

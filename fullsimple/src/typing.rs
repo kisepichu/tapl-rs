@@ -14,7 +14,7 @@ use crate::syntax::{
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
         Term::Var(xn) => {
-            println!("ctx = \n{}", ctx);
+            // println!("ctx = \n{}", ctx);
             match ctx.get(*xn) {
                 Some(ty) => Ok(ty.clone()),
                 None => Err(format!(
@@ -88,7 +88,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                         )
                     })
             } else {
-                println!("ctx = \n{}", ctx);
+                // println!("ctx = \n{}", ctx);
 
                 Err(format!(
                     "type check failed: {}\n  expected record type, but found {}: {}",
@@ -286,10 +286,10 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
             )?;
             let tyf = tyf_r.iter().rev().cloned().collect::<Vec<_>>();
 
-            println!(
-                "------\nctx:\n{},\nctx_inner:\n{},\nctx_:\n{}",
-                ctx, ctx_inner, ctx_
-            );
+            // println!(
+            //     "------\nctx:\n{},\nctx_inner:\n{},\nctx_:\n{}",
+            //     ctx, ctx_inner, ctx_
+            // );
 
             Ok(PatType {
                 ty: Type::TyRecord(tyf),

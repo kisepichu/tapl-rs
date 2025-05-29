@@ -44,6 +44,7 @@ $ cargo run --bin fullsimple
 <false> ::= "false"
 <ident> ::= <ident> (alphabet|digit) | alphabet
 
+
 <pat> ::= <patvar> | <patrecord> | <pattagging>
 <patvar> ::= <bound> ":" <ty>
 <patrecord> ::= "{" <patinner> "}"
@@ -53,11 +54,16 @@ $ cargo run --bin fullsimple
 <patfield> ::= <label> ":" <pat> | <pat>
 <pattagging> ::= <ty> ":::" <parse_labelorindex> | <pattagging> <ident>
 
-<type> ::= <tyarr>
-<tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-<tyarrsub> ::= "->" <ty>
+
+<ty> ::= <tyarr>
+<tyarr> ::= <tysum> "->" <tyarr> | <tysum>
+<tysumorprod> ::= <tysum> | <typrod>
+<tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
+<tyvariant> ::= <tyvariant> <typrod> | <label>
+<typrod> ::= <tyatom> "*" <typrod> | <tyatom>
 <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyvar> | <tyrecord> | <tytagging> | <tySelf>
 <tyencl> ::= "(" <ty> ")"
+
 <tytagging>::= "<" <tyinner> ">"
 <tyrecord> ::= "{" <tyinner> "}"
 <tyinner> ::= <tyfieldseq> | <tynotrailing>
