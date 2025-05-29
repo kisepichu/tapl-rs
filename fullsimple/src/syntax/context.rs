@@ -8,7 +8,6 @@ pub struct Context {
     pub binding: Option<Box<Type>>,
 }
 
-#[allow(dead_code)]
 impl Context {
     pub fn shift_and_push0(self, ty: Type) -> Context {
         if self.binding.is_some() {
