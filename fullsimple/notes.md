@@ -61,9 +61,8 @@ $ cargo run --bin fullsimple
 <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
 <tyvariant> ::= <tyvariant> <typrod> | <label>
 <typrod> ::= <tyatom> "*" <typrod> | <tyatom>
-<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyvar> | <tyrecord> | <tytagging> | <tySelf>
+<tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tynat> | <tyvar> | <tyrecord> | <tytagging> | <tyself>
 <tyencl> ::= "(" <ty> ")"
-
 <tytagging>::= "<" <tyinner> ">"
 <tyrecord> ::= "{" <tyinner> "}"
 <tyinner> ::= <tyfieldseq> | <tynotrailing>
@@ -73,7 +72,8 @@ $ cargo run --bin fullsimple
 <tyvar> ::= <ident>
 <tyunit> ::= "Unit"
 <tybool> ::= "Bool"
-<tySelf> ::= "Self"
+<tynat> ::= "Nat"
+<tyself> ::= "Self"
 ```
 
 ### Abstract syntax
@@ -88,6 +88,9 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{unit} &\quad (\text{constant unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
+  \quad \mid\ &\mathrm{zero} &\quad (\text{constant zero}) \\
+  \quad \mid\ &\mathrm{succ}\ t &\quad (\text{successor}) \\
+  \quad \mid\ &\mathrm{pred}\ t &\quad (\text{predecessor}) \\
   \quad \mid\ &\{l_i\mathord:T_i,^{i\in1..n}\} &\quad (\text{record}) \\
   \quad \mid\ &t.l &\quad (\text{projection}) \\
   \quad \mid\ & T\mathord{:::}l &\quad (\text{tagging}) \\
@@ -103,8 +106,12 @@ v ::=&   &\quad (\text{values}) \\
   \quad \mid\ &\mathrm{unit} &\quad (\text{unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
+  \quad \mid \ &v_\mathrm{n} &\quad (\text{numeric value}) \\
   \quad \mid\ &\{l_i\mathord=v_i,^{i\in1..n}\} &\quad (\text{record value}) \\
   \quad \mid\ & v_\mathrm{tag} &\quad (\text{tagging value}) \\
+v_\mathrm{n} ::=& &\quad (\text{numeric values}) \\
+  \quad \mid\ &\mathrm{zero} &\quad (\text{zero}) \\
+  \quad \mid\ &\mathrm{succ}\ v_\mathrm{n} &\quad (\text{successor}) \\
 v_{\mathrm{tag}} ::=& &\quad (\text{tagging value}) \\
   \quad \mid\ &T\mathord{:::}l &\quad (\text{tagging}) \\
   \quad \mid\ &v_\mathrm{tag}\ v &\quad (\text{tagging application}) \\
@@ -123,6 +130,7 @@ T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
   \quad \mid\ &\mathrm{Unit} &\quad (\text{unit type}) \\
   \quad \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
+  \quad \mid\ &\mathrm{Nat} &\quad (\text{natural number type}) \\
   \quad \mid\ &\{l_i\mathord:T_i,^{i\in1..n}\} &\quad (\text{record type}) \\
   \quad \mid\ & \langle l_i\mathord:T_i,^{i \in 1..n}\rangle &\quad (\text{variant type}) \\
   \\
@@ -148,7 +156,12 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \lambda x:T.t_2 \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
 \\
 \\
-\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype})
+\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype}) \\
+\\
+T_1 \times T_2 \times \dots \times T_n \stackrel{\mathrm{def}}{=}\ & \{i\mathord:T_i,^{i \in 1..n}\} \quad & (\text{product type}) \\
+\\
+l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
++\ l_n\ T_{n1}\ T_{n2} \dots T_{nm_n} \stackrel{\mathrm{def}}{=}\ & \langle l_i\mathord: T_{i1} \mathord{\rightarrow} \dots \mathord{\rightarrow} T_{im_i} \mathord{\rightarrow} \mathrm{Self},^{i \in 1..n}\rangle \quad & (\text{sum type}) \\
 \end{align*}
 ```
 
@@ -180,6 +193,14 @@ t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad & \text{(E-APP2)} \\
 \\
 \frac{t_1 \rightarrow t_1'}{t_1\ t_2 \rightarrow t_1'\ t_2} \quad & \text{(E-APP1)} \\
+\\
+\frac{t_1 \rightarrow t_1'}{\mathrm{succ}\ t_1 \rightarrow \mathrm{succ}\ t_1'} \quad & \text{(E-SUCC)} \\
+\\
+\frac{}{\mathrm{pred} \ \mathrm{zero} \rightarrow \mathrm{zero}} \quad & \text{(E-PREDZERO)} \\
+\\
+\frac{}{\mathrm{pred} \ (\mathrm{succ}\ v_1) \rightarrow v_1} \quad & \text{(E-PREDSUCC)} \\
+\\
+\frac{t_1 \rightarrow t_1'}{\mathrm{pred}\ t_1 \rightarrow \mathrm{pred}\ t_1'} \quad & \text{(E-PRED)} \\
 \\
 \frac{}{\mathrm{if} \ \mathrm{true} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_2} \quad & \text{(E-IFTRUE)} \\
 \\
@@ -243,6 +264,12 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \frac{}{\Gamma \vdash \mathrm{true} : \mathrm{Bool}} \quad & \text{(T-TRUE)} \\
 \\
 \frac{}{\Gamma \vdash \mathrm{false} : \mathrm{Bool}} \quad & \text{(T-FALSE)} \\
+\\
+\frac{}{\Gamma \vdash \mathrm{zero} : \mathrm{Nat}} \quad & \text{(T-ZERO)} \\
+\\
+\frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{succ}\ t_1 : \mathrm{Nat}} \quad & \text{(T-SUCC)} \\
+\\
+\frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{pred}\ t_1 : \mathrm{Nat}} \quad & \text{(T-PRED)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\
 \\
