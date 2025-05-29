@@ -496,15 +496,15 @@ fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
 /// <tysum> ::= <typrod> "+" <tysum> | <typrod>
 fn parse_tysum(i: &str) -> IResult<&str, Type> {
     let (i, tyf1) = parse_tyvariant.parse(i)?;
-    let (i, tyfs) = many1(parse_tysumsub).parse(i)?;
-    if tyfs.is_empty() {
-        Ok((i, Type::TyVar(tyf1.label.clone())))
+    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
+        many0(parse_tysumsub).parse(i)?
     } else {
-        Ok((
-            i,
-            Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
-        ))
-    }
+        many1(parse_tysumsub).parse(i)?
+    };
+    Ok((
+        i,
+        Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
+    ))
 }
 
 /// <tysumorprod> ::= <tysum> | <typrod>
@@ -754,7 +754,11 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
 
 fn parse_arm(i: &str) -> IResult<&str, Arm> {
     let (i, _) = preceded(multispace0, char('|')).parse(i)?;
-    let (i, ptag) = preceded(multispace0, parse_pattagging_args).parse(i)?;
+    let (i, ptag) = preceded(multispace0, parse_pattagging_args)
+        .parse(i)
+        .inspect_err(|_| {
+            println!("Error parsing case arm: expected <type>:::<label> <args...>");
+        })?;
     let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 

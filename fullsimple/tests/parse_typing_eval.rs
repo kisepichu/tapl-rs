@@ -190,6 +190,18 @@ swap {true, false}
     Some(r"{0:Bool, 1:Bool}"),
     Some(r"{0=false, 1=true}")
 )]
+#[case(
+    r"
+type P = Pair Bool Bool in
+let swap = \p:P.
+  case p of
+    | P:::Pair x y => P:::Pair y x
+in
+swap (P:::Pair true false)
+    ",
+    Some(r"<Pair:Bool->Bool->Self>"),
+    Some(r"<Pair:Bool->Bool->Self>:::Pair false true")
+)]
 // #[case(
 //     r"
 //
