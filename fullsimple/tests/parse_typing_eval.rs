@@ -202,6 +202,46 @@ swap (P:::Pair true false)
     Some(r"<Pair:Bool->Bool->Self>"),
     Some(r"<Pair:Bool->Bool->Self>:::Pair false true")
 )]
+#[case(
+    r"
+type B = T + F in
+let not = \b:B.
+  case b of
+    | B:::T => B:::F
+    | B:::F => B:::T
+in
+not B:::T
+    ",
+    Some(r"<T:Self, F:Self>"),
+    Some(r"<T:Self, F:Self>:::F")
+)]
+#[case(
+    r"
+T Bool:::T true
+    ",
+    None,
+    None
+)]
+#[case(
+    r"
+(T Bool):::T true
+    ",
+    Some(r"<T:Bool->Self>"),
+    Some(r"<T:Bool->Self>:::T true")
+)]
+#[case(
+    r"
+type OptionBool = Some Bool + None in
+let issome = \o:OptionBool.
+  case o of
+    | OptionBool:::Some b => true
+    | OptionBool:::None => false
+in
+issome (OptionBool:::Some true)
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
 // #[case(
 //     r"
 //

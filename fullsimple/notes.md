@@ -34,7 +34,7 @@ $ cargo run --bin fullsimple
 <notrailing> ::= <fieldseq> <field>
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
-<tagging> ::= <ty> ":::" <labelorindex>
+<tagging> ::= <tyatom> ":::" <labelorindex>
 <labelorindex> ::= <label> | number
 <label> ::= <ident>
 <bound> ::= <ident>

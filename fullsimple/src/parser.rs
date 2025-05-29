@@ -660,7 +660,7 @@ fn parse_var(i: &str) -> IResult<&str, Term> {
 
 /// <tagging> ::= <ty> ":::" <labelorindex>
 fn parse_tagging(i: &str) -> IResult<&str, Tag> {
-    let (i, ty) = preceded(multispace0, parse_type).parse(i)?;
+    let (i, ty) = preceded(multispace0, parse_tyatom).parse(i)?;
     let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
     let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
     Ok((i, Tag { ty, label }))
@@ -837,9 +837,9 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
             parse_false,
             parse_true,
             parse_unit,
-            parse_encl,
             parse_abs,
             parse_var,
+            parse_encl,
         )),
     )
     .parse(i)
@@ -904,8 +904,8 @@ pub fn parse(input: &str) -> Result<Term, String> {
         Ok(t)
     } else {
         Err(format!(
-            "\nparse error: input not fully consumed: {}, \nparsed={:?}",
-            rest, t
+            "\nparse error: input not fully consumed: {}, \nparsed= {}\n= {:?}",
+            rest, t, t
         ))
     }
 }
