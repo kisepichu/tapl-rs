@@ -17,8 +17,8 @@ use nom::{
 
 fn reserved(i: &str) -> bool {
     let rs = [
-        "let", "plet", "in", "if", "then", "else", "true", "unit", "false", "case", "of", "type",
-        "Unit", "Bool", "Self",
+        "let", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero", "succ", "pred",
+        "case", "of", "type", "Unit", "Bool", "Self",
     ];
     rs.iter().any(|s| *s == i)
 }
@@ -40,6 +40,9 @@ impl Term {
                 Term::Unit => Term::Unit,
                 Term::True => Term::True,
                 Term::False => Term::False,
+                Term::Zero => Term::Zero,
+                Term::Succ(t1) => Term::Succ(Box::new(walk(t1, z, c))),
+                Term::Pred(t1) => Term::Pred(Box::new(walk(t1, z, c))),
                 Term::Record(fields) => {
                     let fields = fields
                         .iter()
@@ -95,6 +98,9 @@ impl Term {
             Term::Unit => Term::Unit,
             Term::True => Term::True,
             Term::False => Term::False,
+            Term::Zero => Term::Zero,
+            Term::Succ(t1) => Term::Succ(Box::new(t1.subst_type_name(type_name, ty2))),
+            Term::Pred(t1) => Term::Pred(Box::new(t1.subst_type_name(type_name, ty2))),
             Term::App(t1, t2) => Term::App(
                 Box::new(t1.subst_type_name(type_name, ty2)),
                 Box::new(t2.subst_type_name(type_name, ty2)),
@@ -306,6 +312,7 @@ impl Type {
                 Box::new(ty1.subst_name(type_name, ty2)),
                 Box::new(ty2_.subst_name(type_name, ty2)),
             ),
+            Type::Nat => Type::Nat,
             Type::Bool => Type::Bool,
             Type::Unit => Type::Unit,
             Type::TySelf => Type::TySelf,
@@ -440,6 +447,7 @@ fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     preceded(
         multispace0,
         alt((
+            map(tag("Nat"), |_| Type::Nat),
             map(tag("Bool"), |_| Type::Bool),
             map(tag("Unit"), |_| Type::Unit),
             map(tag("Self"), |_| Type::TySelf),
@@ -629,6 +637,11 @@ fn parse_pat(i: &str) -> IResult<&str, Pattern> {
     .parse(i)
 }
 
+/// <zero> ::= "zero"
+fn parse_zero(i: &str) -> IResult<&str, Term> {
+    map(tag("zero"), |_| Term::Zero).parse(i)
+}
+
 /// <false> ::= "false"
 fn parse_false(i: &str) -> IResult<&str, Term> {
     map(tag("false"), |_| Term::False).parse(i)
@@ -656,6 +669,20 @@ fn parse_varstr(i: &str) -> IResult<&str, Term> {
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
     Ok((i, v))
+}
+
+/// <succ> ::= "succ" <term>
+fn parse_succ(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("succ")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::Succ(Box::new(t))))
+}
+
+/// <pred> ::= "pred" <term>
+fn parse_pred(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, tag("pred")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::Pred(Box::new(t))))
 }
 
 /// <tagging> ::= <ty> ":::" <labelorindex>
@@ -832,8 +859,11 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
             parse_plet,
             parse_let,
             parse_if,
+            parse_succ,
+            parse_pred,
             parse_tagging.map(Term::Tagging),
             parse_record,
+            parse_zero,
             parse_false,
             parse_true,
             parse_unit,

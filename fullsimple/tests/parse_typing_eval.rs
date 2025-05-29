@@ -217,6 +217,33 @@ not B:::T
 )]
 #[case(
     r"
+type N = Zero + Succ Self in
+let iszero = \n:N.
+  case n of
+    | N:::Zero => true
+    | N:::Succ p => false
+in
+iszero N:::Zero
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"
+type N = Zero + Succ Self in
+let iszero = \n:N.
+  case n of
+    | N:::Zero => true
+    | N:::Succ p => false
+in
+let two = N:::Succ (N:::Succ N:::Zero) in
+iszero two
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
+#[case(
+    r"
 T Bool:::T true
     ",
     None,

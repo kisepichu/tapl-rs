@@ -61,6 +61,29 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Unit => Ok(Type::Unit),
         Term::True => Ok(Type::Bool),
         Term::False => Ok(Type::Bool),
+        Term::Zero => Ok(Type::Nat),
+        Term::Succ(t1) => {
+            let ty1 = type_of(ctx, t1)?;
+            if ty1 == Type::Nat {
+                Ok(Type::Nat)
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected Nat type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
+        Term::Pred(t1) => {
+            let ty1 = type_of(ctx, t1)?;
+            if ty1 == Type::Nat {
+                Ok(Type::Nat)
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected Nat type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
         Term::Record(fields) => {
             let tyfields = fields
                 .iter()

@@ -44,6 +44,9 @@ pub enum Term {
     Unit,
     True,
     False,
+    Zero,
+    Succ(Box<Term>),
+    Pred(Box<Term>),
     Record(Vec<Field>),
     Tagging(Tag),
     If(Box<Term>, Box<Term>, Box<Term>),
@@ -85,6 +88,21 @@ impl fmt::Display for Term {
                 Term::Unit => "unit".to_string(),
                 Term::True => "true".to_string(),
                 Term::False => "false".to_string(),
+                Term::Zero => "zero".to_string(),
+                Term::Succ(t) => {
+                    if has_arg_after {
+                        format!("succ ({})", print(t, false, false))
+                    } else {
+                        format!("succ {}", print(t, false, false))
+                    }
+                }
+                Term::Pred(t) => {
+                    if has_arg_after {
+                        format!("pred ({})", print(t, false, false))
+                    } else {
+                        format!("pred {}", print(t, false, false))
+                    }
+                }
                 Term::Record(fields) => {
                     let fields_str: Vec<String> = fields
                         .iter()

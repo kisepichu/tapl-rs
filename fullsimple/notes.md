@@ -35,6 +35,8 @@ $ cargo run --bin fullsimple
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
 <tagging> ::= <tyatom> ":::" <labelorindex>
+<succ> ::= "succ" <term>
+<pred> ::= "pred" <term>
 <labelorindex> ::= <label> | number
 <label> ::= <ident>
 <bound> ::= <ident>
@@ -42,6 +44,7 @@ $ cargo run --bin fullsimple
 <unit> ::= "unit"
 <true> ::= "true"
 <false> ::= "false"
+<zero> ::= "zero"
 <ident> ::= <ident> (alphabet|digit) | alphabet
 
 
