@@ -10,6 +10,9 @@ use typing::type_of;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
+    if rl.load_history("history.txt").is_err() {
+        println!("No previous history.");
+    }
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -74,6 +77,9 @@ fn main() -> Result<()> {
                 break;
             }
         }
+    }
+    if rl.save_history("history.txt").is_err() {
+        println!("error saving history.txt");
     }
     Ok(())
 }

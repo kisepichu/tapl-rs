@@ -1,6 +1,9 @@
 use num::FromPrimitive;
 
-use crate::syntax::term::{Field, Term};
+use crate::syntax::{
+    pattern::Pattern,
+    term::{Arm, Field, Term},
+};
 
 impl Term {
     pub fn shift(&self, d: isize) -> Result<Term, String> {
@@ -49,6 +52,25 @@ impl Term {
                     Box::new(walk(t1, d, c)?),
                     Box::new(walk(t2, d, c + 1)?),
                 )),
+                Term::Plet(p, t1, t2) => {
+                    let t1 = walk(t1, d, c)?;
+                    let t2 = walk(t2, d, c + p.len())?;
+                    Ok(Term::Plet(p.clone(), Box::new(t1), Box::new(t2)))
+                }
+                Term::Tagging(_) => Ok(t.clone()),
+                Term::Case(t, bs) => {
+                    let t = walk(t, d, c)?;
+                    let bs = bs
+                        .iter()
+                        .map(|b| {
+                            Ok::<_, String>(Arm {
+                                ptag: b.ptag.clone(),
+                                term: walk(&b.term, d, c + b.ptag.len())?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Term::Case(Box::new(t), bs))
+                }
             }
         }
         walk(self, d, 0)
@@ -99,6 +121,25 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
                 Box::new(walk(j, s, c, t1)?),
                 Box::new(walk(j, s, c + 1, t2)?),
             )),
+            Term::Plet(p, t1, t2) => {
+                let t1 = walk(j, s, c, t1)?;
+                let t2 = walk(j, s, c + p.len() as isize, t2)?;
+                Ok(Term::Plet(p.clone(), Box::new(t1), Box::new(t2)))
+            }
+            Term::Tagging(_) => Ok(t.clone()),
+            Term::Case(t, bs) => {
+                let t = walk(j, s, c, t)?;
+                let bs = bs
+                    .iter()
+                    .map(|b| {
+                        Ok::<_, String>(Arm {
+                            ptag: b.ptag.clone(),
+                            term: walk(j, s, c + b.ptag.len() as isize, &b.term)?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Term::Case(Box::new(t), bs))
+            }
         }
     }
     walk(j, s, 0, t)
@@ -106,6 +147,52 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
 
 fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
     term_subst(0, &s.shift(1)?, t)?.shift(-1)
+}
+
+fn walk_pattern(p: &Pattern, v1: &Term, t2: &Term) -> Result<Term, String> {
+    match p {
+        Pattern::Var(_, _) => term_subst_top(v1, t2),
+        Pattern::Record(pfs) => {
+            let mut t2 = t2.clone();
+            if let Term::Record(fs) = v1 {
+                for (_pf, f) in pfs.iter().zip(fs.iter()) {
+                    t2 = term_subst_top(&f.term, &t2)?;
+                }
+                for (pf, f) in pfs.iter().zip(fs.iter()) {
+                    t2 = walk_pattern(&pf.pat, &f.term, &t2)?;
+                }
+                Ok(t2)
+            } else {
+                Err(format!("internal error: expected Record, but got {}", v1))
+            }
+        }
+        Pattern::TmpTagging(ptag) => {
+            let mut v1 = v1.clone();
+            let mut t2 = t2.clone();
+            for _arg in ptag.nargs.iter().rev() {
+                if let Term::App(l, r) = v1 {
+                    v1 = *l;
+                    t2 = term_subst_top(&r, &t2)?;
+                } else {
+                    return Err(format!(
+                        "internal error: expected tagging or app, but got {}",
+                        v1
+                    ));
+                }
+            }
+            if let Term::Tagging(tag) = v1 {
+                if tag.label != ptag.label {
+                    return Err(format!(
+                        "internal error: expected tag {}, but got {}",
+                        ptag.label, tag.label
+                    ));
+                }
+            } else {
+                return Err(format!("internal error: expected tagging, but got {}", v1));
+            }
+            Ok(t2)
+        }
+    }
 }
 
 fn eval1(t: &Term) -> Result<Term, String> {
@@ -129,7 +216,6 @@ fn eval1(t: &Term) -> Result<Term, String> {
                     })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-
             Ok(Term::Record(fields))
         }
         Term::Projection(t, label) => {
@@ -156,6 +242,47 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (v1, t2) if v1.isval() => term_subst(0, v1, t2)?.shift(-1),
             _ => Ok(Term::Let(Box::new(eval1(t1)?), t2.clone())),
         },
+        Term::Plet(p, t1, t2) => match (&**t1, &**t2) {
+            (v1, t2) if v1.isval() => walk_pattern(p, v1, t2),
+            _ => Ok(Term::Plet(p.clone(), Box::new(eval1(t1)?), t2.clone())),
+        },
+        Term::Case(v, bs) if v.isval() => {
+            fn tagapp_to_vec(t: &Term) -> Result<Vec<Term>, String> {
+                match t.clone() {
+                    Term::App(l, r) => {
+                        let mut v = tagapp_to_vec(&l)?;
+                        v.push(*r);
+                        Ok(v)
+                    }
+                    Term::Tagging(_) => Ok(vec![t.clone()]),
+                    _ => Err(format!(
+                        "internal error: expected tagging or app, but got {}",
+                        t
+                    )),
+                }
+            }
+            let v = tagapp_to_vec(v)?;
+            let labelv0 = {
+                if let Term::Tagging(tag) = &v[0] {
+                    tag.label.clone()
+                } else {
+                    return Err(format!(
+                        "internal error: expected tagging, but got {}",
+                        v[0]
+                    ));
+                }
+            };
+            let bj = bs
+                .iter()
+                .find(|b| b.ptag.label == labelv0)
+                .ok_or(format!("internal error: no branch found for {}", labelv0))?;
+            let mut t = bj.term.clone();
+            for vv in v.iter().skip(1).rev() {
+                t = term_subst_top(vv, &t)?;
+            }
+            Ok(t)
+        }
+        Term::Case(t, bs) => eval1(t).map(|t1| Term::Case(Box::new(t1), bs.clone())),
         _ => Err("eval1: no rule applies".to_string()),
     }
 }
@@ -173,6 +300,9 @@ pub fn eval(t: &Term) -> Result<Term, String> {
                 }
             }
         }
+    }
+    if !t.isval() {
+        println!("soundness not hold. no rule applies but not a value");
     }
     Ok(t)
 }
