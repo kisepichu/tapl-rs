@@ -142,7 +142,9 @@ p_{\mathrm{tag}} ::=& &\quad (\text{tagging pattern}) \\
   \quad \mid\ & T\mathord{:::}l\ n\mathord-1\ n\mathord-2\ \dots \ 0 &\quad (\text{tagging}) \\
 \end{align*}
 ```
+
 デカすぎると render できないっぽい。続き
+
 ```math
 \begin{align*}
 
@@ -234,6 +236,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{}{\mathrm{if} \ \mathrm{true} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_2} \quad & \text{(E-IFTRUE)} \\
 \end{align*}
 ```
+
 ```math
 \begin{align*}
 \frac{}{\mathrm{if} \ \mathrm{false} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_3} \quad & \text{(E-IFFALSE)} \\
@@ -253,6 +256,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{t_1\rightarrow t_1'}{t_1.l \rightarrow t_1'.l} \quad &(\text{E-PROJ}) \\
 \end{align*}
 ```
+
 ```math
 \begin{align*}
 \frac{t_j\rightarrow t_j'}{\{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j, l_k\mathord=t_k^{k\in j+1..n}\} \\ \rightarrow \{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j', l_k\mathord=t_k^{k\in j+1..n}\}} \quad &(\text{E-RCD}) \\
@@ -315,6 +319,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{iszero}\ t_1 : \mathrm{Bool}} \quad & \text{(T-ISZERO)} \\
 \end{align*}
 ```
+
 ```math
 \begin{align*}
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\

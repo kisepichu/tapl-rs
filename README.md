@@ -32,7 +32,7 @@ input= (\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true: Bool->B
 
 ## Extensions of simply typed lambda calculus
 
-[`fullsimple/notes.md`](https://https://github.com/kisepichu/tapl-rs/tree/main/fullsimple/notes.md)
+[`fullsimple/notes.md`](https://github.com/kisepichu/tapl-rs/tree/main/fullsimple/notes.md)
 
 ```
 $ cargo run --bin fullsimple
