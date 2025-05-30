@@ -297,6 +297,13 @@ succ true
     None,
     None
 )]
+#[case(
+    r"
+pred(succ(pred(succ(succ (succ zero)))))
+    ",
+    Some(r"Nat"),
+    Some(r"succ (succ zero)")
+)]
 // #[case(
 //     r"
 // type SumNat = Zero + Succ Self in

@@ -91,17 +91,17 @@ impl fmt::Display for Term {
                 Term::False => "false".to_string(),
                 Term::Zero => "zero".to_string(),
                 Term::Succ(t) => {
-                    if has_arg_after {
-                        format!("succ ({})", print(t, false, false))
-                    } else {
+                    if matches!(**t, Term::Zero) {
                         format!("succ {}", print(t, false, false))
+                    } else {
+                        format!("succ ({})", print(t, false, false))
                     }
                 }
                 Term::Pred(t) => {
-                    if has_arg_after {
-                        format!("pred ({})", print(t, false, false))
-                    } else {
+                    if matches!(**t, Term::Zero) {
                         format!("pred {}", print(t, false, false))
+                    } else {
+                        format!("pred ({})", print(t, false, false))
                     }
                 }
                 Term::IsZero(t) => {
