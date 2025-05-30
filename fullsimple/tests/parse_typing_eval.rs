@@ -498,6 +498,73 @@ let five = succ (succ three) in
     Some(r"{0:Bool, 1:Bool, 2:Bool}"),
     Some(r"{0=true, 1=false, 2=true}")
 )]
+#[case(
+    r"
+letrec iseven: Nat->Bool = 
+  \n:Nat.
+    if iszero n then
+      true
+    else if iszero (pred n) then
+      false
+    else
+      iseven (pred (pred n))
+in
+let two = succ (succ zero) in
+
+{
+  iseven two,
+  iseven (succ two)
+}
+    ",
+    Some(r"{0:Bool, 1:Bool}"),
+    Some(r"{0=true, 1=false}")
+)]
+#[case(
+    r"
+letrec equal: Nat->Nat->Bool =
+  \n:Nat.\m:Nat.
+    if iszero n then
+      iszero m
+    else if iszero m then
+      false
+    else
+      equal (pred n) (pred m)
+in
+letrec plus: Nat->Nat->Nat =
+  \n:Nat.\m:Nat.
+    if iszero n then
+      m
+    else
+      succ (plus (pred n) m)
+in
+letrec times: Nat->Nat->Nat =
+  \n:Nat.\m:Nat.
+    if iszero n then
+      zero
+    else
+      plus m (times (pred n) m)
+in
+letrec factorial: Nat->Nat =
+  \n:Nat.
+    if iszero n then 
+      succ zero
+    else
+      times n (factorial (pred n))
+in
+let two = succ (succ zero) in
+let three = succ two in
+let six = succ (succ (succ three)) in
+
+{
+  equal six succ (plus two three),
+  equal six (times two three),
+  equal two (factorial two),
+  equal six (factorial three),
+}
+    ",
+    Some(r"{0:Bool, 1:Bool, 2:Bool, 3:Bool}"),
+    Some(r"{0=true, 1=true, 2=true, 3=true}")
+)]
 // #[case(
 //     r"
 //

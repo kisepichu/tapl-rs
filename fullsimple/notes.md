@@ -23,6 +23,7 @@ $ cargo run --bin fullsimple
 <atom> ::= <encl> | <abs> | <if> | <let> | <plet> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging> | <lettype>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
+<letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
 <fix> ::= "fix" <term>
 <lettype> ::= "type" <ident> "=" <type> "in" <term>
 <case> ::= "case" <term> "of" <armes>
@@ -169,6 +170,8 @@ T_1 \times T_2 \times \dots \times T_n \stackrel{\mathrm{def}}{=}\ & \{i\mathord
 \\
 l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 +\ l_n\ T_{n1}\ T_{n2} \dots T_{nm_n} \stackrel{\mathrm{def}}{=}\ & \langle l_i\mathord: T_{i1} \mathord{\rightarrow} \dots \mathord{\rightarrow} T_{im_i} \mathord{\rightarrow} \mathrm{Self},^{i \in 1..n}\rangle \quad & (\text{sum type}) \\
+\\
+\mathrm{letrec}\ x\mathord{:}T = t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ x = \mathrm{fix}\ (\lambda\mathord{:}T.t_1)\ \mathrm{in}\ t_2 \quad & (\text{letrec}) \\
 \end{align*}
 ```
 

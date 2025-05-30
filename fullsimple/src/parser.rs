@@ -17,8 +17,8 @@ use nom::{
 
 fn reserved_check(ident: &str) -> bool {
     let rs = [
-        "let", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero", "succ", "pred",
-        "iszero", "case", "fix", "of", "type", "Unit", "Bool", "Nat", "Self",
+        "let", "letrec", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero",
+        "succ", "pred", "iszero", "case", "fix", "of", "type", "Unit", "Bool", "Nat", "Self",
     ];
     rs.iter().any(|s| *s == ident)
 }
@@ -868,6 +868,27 @@ fn parse_fix(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::Fix(Box::new(t))))
 }
 
+/// <letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
+fn parse_letrec(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, parse_reserved("letrec")).parse(i)?;
+    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, char(':')).parse(i)?;
+    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
+    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    let t1_renamed = t1.subst_name(name.as_str());
+    let t2_renamed = t2.subst_name(name.as_str());
+    Ok((
+        i,
+        Term::Let(
+            Box::new(Term::Fix(Box::new(Term::Abs(ty, Box::new(t1_renamed))))),
+            Box::new(t2_renamed),
+        ),
+    ))
+}
+
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
@@ -895,6 +916,7 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
+            parse_letrec,
             parse_fix,
             parse_lettype,
             parse_case,
