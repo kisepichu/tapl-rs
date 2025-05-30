@@ -153,7 +153,6 @@ impl Term {
         }
     }
     fn subst_ptag(&self, ptag: &PTmpTag, offset: usize) -> Result<(Term, PTmpTag, usize), &str> {
-        println!("self={}, ptag={}", self, ptag);
         let t_renamed = ptag.nargs.iter().fold(self.clone(), |acc, arg| {
             acc.shift(1)
                 .expect("plus shift does not fail")

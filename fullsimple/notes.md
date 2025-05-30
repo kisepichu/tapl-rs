@@ -1,12 +1,20 @@
 # Extensions of simply typed lambda calculus
 
-WIP
-
 ```
 $ cargo run --bin fullsimple
 ```
 
-11.1(p.89)
+11(p.89)
+
+単純型付き λ 計算の拡張は、(型付けされたまま、型安全なまま)表現できるものの範囲を拡張したもの。
+
+- Unit
+- Nat
+- let
+- letrec
+- pattern let
+- record
+- variants, case
 
 ## Syntax
 
@@ -114,15 +122,15 @@ v ::=&   &\quad (\text{values}) \\
   \quad \mid\ &\mathrm{unit} &\quad (\text{unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
-  \quad \mid \ &v_\mathrm{n} &\quad (\text{numeric value}) \\
+  \quad \mid \ &v_{\mathrm{n}} &\quad (\text{numeric value}) \\
   \quad \mid\ &\{l_i\mathord=v_i,^{i\in1..n}\} &\quad (\text{record value}) \\
-  \quad \mid\ & v_\mathrm{tag} &\quad (\text{tagging value}) \\
-v_\mathrm{n} ::=& &\quad (\text{numeric values}) \\
+  \quad \mid\ & v_{\mathrm{tag}} &\quad (\text{tagging value}) \\
+v_{\mathrm{n}} ::=& &\quad (\text{numeric values}) \\
   \quad \mid\ &\mathrm{zero} &\quad (\text{zero}) \\
-  \quad \mid\ &\mathrm{succ}\ v_\mathrm{n} &\quad (\text{successor}) \\
+  \quad \mid\ &\mathrm{succ}\ v_{\mathrm{n}} &\quad (\text{successor}) \\
 v_{\mathrm{tag}} ::=& &\quad (\text{tagging value}) \\
   \quad \mid\ &T\mathord{:::}l &\quad (\text{tagging}) \\
-  \quad \mid\ &v_\mathrm{tag}\ v &\quad (\text{tagging application}) \\
+  \quad \mid\ &v_{\mathrm{tag}}\ v &\quad (\text{tagging application}) \\
   \\
 
 
@@ -149,7 +157,7 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、本文の $\Gamma, x\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように書けば、名無し項のまま表せて、このまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
+- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、本文の $\Gamma, x\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように書けば、名無し項のまま表せて、このまま実装できる。
 - この段階では、 variant type や record のフィールドの順序の違いを区別する。11.8(p.99)
 
 ### Derived forms
@@ -240,10 +248,14 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{t_j\rightarrow t_j'}{\{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j, l_k\mathord=t_k^{k\in j+1..n}\} \\ \rightarrow \{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j', l_k\mathord=t_k^{k\in j+1..n}\}} \quad &(\text{E-RCD}) \\
 \\
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
-\begin{align*}
-\text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
-p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
-\end{align*}
+% \begin{align*}
+%   \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
+%   p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
+% \end{align*}
+\begin{aligned}
+  \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
+  p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
+\end{aligned}\\
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
 \mathrm{case}\ t'\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n}} \quad &(\text{E-CASE}) \\
@@ -329,3 +341,33 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 ```
 
 ### examples
+
+```
+$ cargo run --bin fullsimple
+> type OptionNat = Some Nat + None in
+letrec iseven: OptionNat->Bool = \o:OptionNat.
+  case o of
+    | OptionNat:::Some n =>
+      if iszero n then
+        true
+      else if iszero (pred n) then
+        false
+      else
+        iseven (OptionNat:::Some (pred (pred n)))
+    | OptionNat:::None => false
+in
+{
+  iseven (OptionNat:::Some zero),
+  iseven (OptionNat:::Some (succ zero)),
+  iseven (OptionNat:::Some (succ (succ zero))),
+  iseven OptionNat:::None
+}
+
+input= let 0 = fix \:<Some:Nat->Self, None:Self>->Bool.\:<Some:Nat->Self, None:Self>.case 0 of | <Some:Nat->Self, None:Self>:::Some 0 => if iszero 0 then true else if iszero pred (0) then false else 2 (<Some:Nat->Self, None:Self>:::Some pred (pred (0)))| <Some:Nat->Self, None:Self>:::None => false in {0=0 (<Some:Nat->Self, None:Self>:::Some zero), 1=0 (<Some:Nat->Self, None:Self>:::Some succ zero), 2=0 (<Some:Nat->Self, None:Self>:::Some succ (succ zero)), 3=0 <Some:Nat->Self, None:Self>:::None}
+     : {0:Bool, 1:Bool, 2:Bool, 3:Bool}
+   ->* {0=true, 1=false, 2=true, 3=false}
+
+>
+```
+
+[`fullsimple/tests/parse_typing_eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/tests/parse_typing_eval.rs)

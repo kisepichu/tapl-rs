@@ -500,6 +500,30 @@ let five = succ (succ three) in
 )]
 #[case(
     r"
+type OptionNat = Some Nat + None in
+letrec iseven: OptionNat->Bool = \o:OptionNat.
+  case o of
+    | OptionNat:::Some n =>
+      if iszero n then
+        true
+      else if iszero (pred n) then
+        false
+      else
+        iseven (OptionNat:::Some (pred (pred n)))
+    | OptionNat:::None => false
+in
+{
+  iseven (OptionNat:::Some zero),
+  iseven (OptionNat:::Some (succ zero)),
+  iseven (OptionNat:::Some (succ (succ zero))),
+  iseven OptionNat:::None
+}
+    ",
+    Some(r"{0:Bool, 1:Bool, 2:Bool, 3:Bool}"),
+    Some(r"{0=true, 1=false, 2=true, 3=false}")
+)]
+#[case(
+    r"
 letrec iseven: Nat->Bool = 
   \n:Nat.
     if iszero n then
