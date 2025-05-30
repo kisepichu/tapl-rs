@@ -500,46 +500,14 @@ fn parse_typrod(i: &str) -> IResult<&str, Type> {
     }
 }
 
-/// <tyvariant> ::= <tyvariant> <typrod> | <label>
-fn parse_tyvariant(i: &str) -> IResult<&str, TyField> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
-    let (i, args) = many0(preceded(multispace0, parse_typrod)).parse(i)?;
-    let ty = args.iter().fold(Type::TySelf, |acc, ty| {
-        Type::Arr(Box::new(ty.clone()), Box::new(acc))
-    });
-    Ok((i, TyField { label, ty }))
-}
-fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
-    let (i, _) = preceded(multispace0, tag("+")).parse(i)?;
-    preceded(multispace0, parse_tyvariant).parse(i)
-}
-/// <tysum> ::= <typrod> "+" <tysum> | <typrod>
-fn parse_tysum(i: &str) -> IResult<&str, Type> {
-    let (i, tyf1) = parse_tyvariant.parse(i)?;
-    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
-        many0(parse_tysumsub).parse(i)?
-    } else {
-        many1(parse_tysumsub).parse(i)?
-    };
-    Ok((
-        i,
-        Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
-    ))
-}
-
-/// <tysumorprod> ::= <tysum> | <typrod>
-fn parse_tysumorprod(i: &str) -> IResult<&str, Type> {
-    alt((parse_tysum, parse_typrod)).parse(i)
-}
-
 /// <tyarrsub> ::= "->" <tyarr>
 fn parse_tyarrsub(i: &str) -> IResult<&str, Type> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
     preceded(multispace0, parse_tyarr).parse(i)
 }
-/// <tyarr> ::= <tysum> <tyarrsub> | <tysum>
+/// <tyarr> ::= <typrod> "->" <tyarr> | <typrod>
 fn parse_tyarr(i: &str) -> IResult<&str, Type> {
-    let (i, tyatom) = preceded(multispace0, parse_tysumorprod).parse(i)?;
+    let (i, tyatom) = preceded(multispace0, parse_typrod).parse(i)?;
     let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
     let res = once(tyatom)
@@ -553,9 +521,41 @@ fn parse_tyarr(i: &str) -> IResult<&str, Type> {
     Ok((i, res))
 }
 
-/// <ty> ::= <tyarr>
+/// <tyvariant> ::= <tyvariant> <tyarr> | <label>
+fn parse_tyvariant(i: &str) -> IResult<&str, TyField> {
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, args) = many0(preceded(multispace0, parse_tyarr)).parse(i)?;
+    let ty = args.iter().fold(Type::TySelf, |acc, ty| {
+        Type::Arr(Box::new(ty.clone()), Box::new(acc))
+    });
+    Ok((i, TyField { label, ty }))
+}
+fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
+    let (i, _) = preceded(multispace0, tag("+")).parse(i)?;
+    preceded(multispace0, parse_tyvariant).parse(i)
+}
+/// <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
+fn parse_tysum(i: &str) -> IResult<&str, Type> {
+    let (i, tyf1) = parse_tyvariant.parse(i)?;
+    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
+        many0(parse_tysumsub).parse(i)?
+    } else {
+        many1(parse_tysumsub).parse(i)?
+    };
+    Ok((
+        i,
+        Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
+    ))
+}
+
+/// <tysumorarr> ::= <tysum> | <tyarr>
+fn parse_tysumorarr(i: &str) -> IResult<&str, Type> {
+    alt((parse_tysum, parse_tyarr)).parse(i)
+}
+
+/// <ty> ::= <tysum>
 fn parse_type(i: &str) -> IResult<&str, Type> {
-    parse_tyarr.parse(i)
+    parse_tysumorarr.parse(i)
 }
 
 fn parse_type_space(i: &str) -> IResult<&str, Type> {

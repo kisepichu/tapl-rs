@@ -69,11 +69,11 @@ $ cargo run --bin fullsimple
 <pattagging> ::= <ty> ":::" <parse_labelorindex> | <pattagging> <ident>
 
 
-<ty> ::= <tyarr>
-<tyarr> ::= <tysum> "->" <tyarr> | <tysum>
-<tysumorprod> ::= <tysum> | <typrod>
+<ty> ::= <tysumorarr>
+<tysumorarr> ::= <tysum> | <tyarr>
 <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
-<tyvariant> ::= <tyvariant> <typrod> | <label>
+<tyvariant> ::= <tyvariant> <tyarr> | <label>
+<tyarr> ::= <typrod> "->" <tyarr> | <typrod>
 <typrod> ::= <tyatom> "*" <typrod> | <tyatom>
 <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tynat> | <tyvar> | <tyrecord> | <tytagging> | <tyself>
 <tyencl> ::= "(" <ty> ")"

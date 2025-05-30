@@ -387,7 +387,7 @@ realnat two
 )]
 #[case(
     r"
-type B = Real Bool + Church (Self->Self->Self) in
+type B = Real Bool + Church Self->Self->Self in
 let tru = B:::Church \t:B.\f:B.t in
 let fls = B:::Church \t:B.\f:B.f in
 let realbool = \b:B.
@@ -409,7 +409,7 @@ let churchand = \b:B.\c:B.
   cb cc fls
 in
 
-type N = Real Nat + Church ((Self->Self)->Self->Self) in
+type N = Real Nat + Church (Self->Self)->Self->Self in
 let zro = N:::Church \s:N->N.\z:N.z in
 let one = N:::Church \s:N->N.\z:N.s z  in
 let two = N:::Church \s:N->N.\z:N.s (s z) in
