@@ -15,10 +15,10 @@ use nom::{
     sequence::{delimited, preceded},
 };
 
-fn reserved(ident: &str) -> bool {
+fn reserved_check(ident: &str) -> bool {
     let rs = [
         "let", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero", "succ", "pred",
-        "iszero", "case", "of", "type", "Unit", "Bool", "Self",
+        "iszero", "case", "of", "type", "Unit", "Bool", "Nat", "Self",
     ];
     rs.iter().any(|s| *s == ident)
 }
@@ -354,7 +354,7 @@ fn parse_ident(i: &str) -> IResult<&str, String> {
     let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
     let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
     let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
-    if reserved(s.as_str()) {
+    if reserved_check(s.as_str()) {
         Err(nom::Err::Error(nom::error::Error::new(
             i,
             nom::error::ErrorKind::Fail,
@@ -367,7 +367,7 @@ fn parse_ident_reserved(i: &str) -> IResult<&str, String> {
     let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
     let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
     let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
-    if reserved(s.as_str()) {
+    if reserved_check(s.as_str()) {
         Ok((i, s))
     } else {
         Err(nom::Err::Error(nom::error::Error::new(
@@ -684,7 +684,6 @@ fn parse_varstr(i: &str) -> IResult<&str, Term> {
 /// <var> ::= number | string
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
-    println!("parse_var: {:?}", v);
     Ok((i, v))
 }
 
