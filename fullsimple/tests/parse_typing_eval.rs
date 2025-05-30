@@ -304,10 +304,27 @@ pred(succ(pred(succ(succ (succ zero)))))
     Some(r"Nat"),
     Some(r"succ (succ zero)")
 )]
+#[case(
+    r"
+let iseven = fix \iseven:Nat->Bool.
+  \n:Nat.
+    if iszero n then
+      true
+    else if iszero (pred n) then
+      false
+    else
+      iseven (pred (pred n))
+in
+let two = succ (succ zero) in
+iseven two
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
 // #[case(
 //     r"
 // type SumNat = Zero + Succ Self in
-// letrec realnat = \n:SumNat.
+// let realnat = fix \realnat:SumNat->Nat.\n:SumNat.
 //   case n of
 //     | SumNat:::Zero => zero
 //     | SumNat:::Succ p => succ (realnat p)

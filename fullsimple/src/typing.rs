@@ -259,6 +259,26 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 )),
             }
         }
+        Term::Fix(t1) => {
+            let ty1 = type_of(ctx, t1)?;
+            if let Type::Arr(ty11, ty12) = ty1 {
+                if *ty11 == *ty12 {
+                    Ok(*ty11)
+                } else {
+                    Err(format!(
+                        "type check failed: {}\n  expected arrow type with same input and output types, but found {}: {}",
+                        t,
+                        t1,
+                        Type::Arr(ty11, ty12)
+                    ))
+                }
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected arrow type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
     }
 }
 

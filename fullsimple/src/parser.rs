@@ -18,7 +18,7 @@ use nom::{
 fn reserved_check(ident: &str) -> bool {
     let rs = [
         "let", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero", "succ", "pred",
-        "iszero", "case", "of", "type", "Unit", "Bool", "Nat", "Self",
+        "iszero", "case", "fix", "of", "type", "Unit", "Bool", "Nat", "Self",
     ];
     rs.iter().any(|s| *s == ident)
 }
@@ -83,6 +83,7 @@ impl Term {
                         })
                         .collect::<Vec<_>>(),
                 ),
+                Term::Fix(t1) => Term::Fix(Box::new(walk(t1, z, c))),
             }
         }
         walk(self, zero_name, 0)
@@ -148,6 +149,7 @@ impl Term {
                     })
                     .collect::<Vec<_>>(),
             ),
+            Term::Fix(t1) => Term::Fix(Box::new(t1.subst_type_name(type_name, ty2))),
         }
     }
     fn subst_ptag(&self, ptag: &PTmpTag, offset: usize) -> Result<(Term, PTmpTag, usize), &str> {
@@ -583,7 +585,6 @@ fn parse_pattagging_args(i: &str) -> IResult<&str, PTmpTag> {
     ))
 }
 
-#[allow(unused)]
 /// <patfield> ::= <label> ":" <pat> | <pat>
 fn parse_patfield_patwithlabel(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
     let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
@@ -777,7 +778,6 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::Record(fields)))
 }
 
-#[allow(unused)]
 fn parse_plet(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, parse_reserved("let")).parse(i)?;
     let (i, p) = preceded(multispace0, parse_pat).parse(i)?;
@@ -785,9 +785,10 @@ fn parse_plet(i: &str) -> IResult<&str, Term> {
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
     let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let (t2_renamed, t1_renamed, p_renamed, _n) = t2
-        .subst_pat(&t1, &p, 0)
-        .map_err(|e| nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail)))?;
+    let (t2_renamed, t1_renamed, p_renamed, _n) = t2.subst_pat(&t1, &p, 0).map_err(|e| {
+        println!("subst_pat: {}", e);
+        nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
+    })?;
     Ok((
         i,
         Term::Plet(p_renamed, Box::new(t1_renamed), Box::new(t2_renamed)),
@@ -827,7 +828,7 @@ fn parse_arm(i: &str) -> IResult<&str, Arm> {
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 
     let (t_renamed, ptag_renamed, _) = t.subst_ptag(&ptag, 0).map_err(|e| {
-        println!("Error in subst_ptag: {}", e);
+        println!("subst_ptag: {}", e);
         nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
     })?;
     Ok((
@@ -864,6 +865,13 @@ fn parse_lettype(i: &str) -> IResult<&str, Term> {
     Ok((i, renamed))
 }
 
+/// <fix> ::= "fix" <term>
+fn parse_fix(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, parse_reserved("fix")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::Fix(Box::new(t))))
+}
+
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
@@ -891,6 +899,7 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
+            parse_fix,
             parse_lettype,
             parse_case,
             parse_plet,
