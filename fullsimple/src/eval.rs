@@ -27,6 +27,10 @@ impl Term {
                 Term::Unit => Ok(Term::Unit),
                 Term::True => Ok(Term::True),
                 Term::False => Ok(Term::False),
+                Term::Zero => Ok(Term::Zero),
+                Term::Succ(t1) => Ok(Term::Succ(Box::new(walk(t1, d, c)?))),
+                Term::Pred(t1) => Ok(Term::Pred(Box::new(walk(t1, d, c)?))),
+                Term::IsZero(t1) => Ok(Term::IsZero(Box::new(walk(t1, d, c)?))),
                 Term::Record(fields) => {
                     let fields = fields
                         .iter()
@@ -96,6 +100,10 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
             Term::Unit => Ok(Term::Unit),
             Term::True => Ok(Term::True),
             Term::False => Ok(Term::False),
+            Term::Zero => Ok(Term::Zero),
+            Term::Succ(t1) => Ok(Term::Succ(Box::new(walk(j, s, c, t1)?))),
+            Term::Pred(t1) => Ok(Term::Pred(Box::new(walk(j, s, c, t1)?))),
+            Term::IsZero(t1) => Ok(Term::IsZero(Box::new(walk(j, s, c, t1)?))),
             Term::Record(fields) => {
                 let fields = fields
                     .iter()
@@ -202,6 +210,19 @@ fn eval1(t: &Term) -> Result<Term, String> {
             (v1, t2) if v1.isval() => Term::App(Box::new(v1.clone()), Box::new(eval1(t2)?)),
             _ => Term::App(Box::new(eval1(t1)?), t2.clone()),
         }),
+        Term::Succ(t1) if !t1.isval() => Ok(Term::Succ(Box::new(eval1(t1)?))),
+        Term::Pred(t1) => match &**t1 {
+            Term::Zero => Ok(Term::Zero),
+            Term::Succ(v1) if v1.isval() => Ok(*v1.clone()),
+            _ if t1.isval() => Err(format!("internal error: expected Nat, but got {}", t1)),
+            _ => Ok(Term::Pred(Box::new(eval1(t1)?))),
+        },
+        Term::IsZero(t1) => match &**t1 {
+            Term::Zero => Ok(Term::True),
+            Term::Succ(v1) if v1.isval() => Ok(Term::False),
+            _ if t1.isval() => Err(format!("internal error: expected Nat, but got {}", t1)),
+            _ => Ok(Term::IsZero(Box::new(eval1(t1)?))),
+        },
         Term::Record(fields) if !t.isval() => {
             let fields = fields
                 .iter()

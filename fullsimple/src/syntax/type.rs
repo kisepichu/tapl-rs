@@ -13,6 +13,7 @@ pub enum Type {
     Arr(Box<Type>, Box<Type>),
     Unit,
     Bool,
+    Nat,
     TyVar(String),
     TyRecord(Vec<TyField>),
     TyTagging(Vec<TyField>),
@@ -33,6 +34,7 @@ impl fmt::Display for Type {
                 }
                 Type::Unit => "Unit".to_string(),
                 Type::Bool => "Bool".to_string(),
+                Type::Nat => "Nat".to_string(),
                 Type::TyVar(x) => x.to_string(),
                 Type::TyRecord(fields) => {
                     let fields_str: Vec<String> = fields

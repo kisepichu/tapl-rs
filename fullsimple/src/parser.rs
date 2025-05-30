@@ -15,12 +15,12 @@ use nom::{
     sequence::{delimited, preceded},
 };
 
-fn reserved(i: &str) -> bool {
+fn reserved_check(ident: &str) -> bool {
     let rs = [
-        "let", "plet", "in", "if", "then", "else", "true", "unit", "false", "case", "of", "type",
-        "Unit", "Bool", "Self",
+        "let", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero", "succ", "pred",
+        "iszero", "case", "of", "type", "Unit", "Bool", "Nat", "Self",
     ];
-    rs.iter().any(|s| *s == i)
+    rs.iter().any(|s| *s == ident)
 }
 
 impl Term {
@@ -40,6 +40,10 @@ impl Term {
                 Term::Unit => Term::Unit,
                 Term::True => Term::True,
                 Term::False => Term::False,
+                Term::Zero => Term::Zero,
+                Term::Succ(t1) => Term::Succ(Box::new(walk(t1, z, c))),
+                Term::Pred(t1) => Term::Pred(Box::new(walk(t1, z, c))),
+                Term::IsZero(t1) => Term::IsZero(Box::new(walk(t1, z, c))),
                 Term::Record(fields) => {
                     let fields = fields
                         .iter()
@@ -95,6 +99,10 @@ impl Term {
             Term::Unit => Term::Unit,
             Term::True => Term::True,
             Term::False => Term::False,
+            Term::Zero => Term::Zero,
+            Term::Succ(t1) => Term::Succ(Box::new(t1.subst_type_name(type_name, ty2))),
+            Term::Pred(t1) => Term::Pred(Box::new(t1.subst_type_name(type_name, ty2))),
+            Term::IsZero(t1) => Term::IsZero(Box::new(t1.subst_type_name(type_name, ty2))),
             Term::App(t1, t2) => Term::App(
                 Box::new(t1.subst_type_name(type_name, ty2)),
                 Box::new(t2.subst_type_name(type_name, ty2)),
@@ -306,6 +314,7 @@ impl Type {
                 Box::new(ty1.subst_name(type_name, ty2)),
                 Box::new(ty2_.subst_name(type_name, ty2)),
             ),
+            Type::Nat => Type::Nat,
             Type::Bool => Type::Bool,
             Type::Unit => Type::Unit,
             Type::TySelf => Type::TySelf,
@@ -342,16 +351,29 @@ impl Pattern {
 
 /// <ident> ::= <ident> (alphabet|digit) | alphabet
 fn parse_ident(i: &str) -> IResult<&str, String> {
-    let (i, s0) = preceded(multispace0, alpha1).parse(i)?;
-    let (i, s) = many0(alt((alpha1, digit1))).parse(i)?;
+    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
+    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
     let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
-    if reserved(s.as_str()) {
+    if reserved_check(s.as_str()) {
         Err(nom::Err::Error(nom::error::Error::new(
             i,
             nom::error::ErrorKind::Fail,
         )))
     } else {
         Ok((i, s))
+    }
+}
+fn parse_ident_reserved(i: &str) -> IResult<&str, String> {
+    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
+    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
+    let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
+    if reserved_check(s.as_str()) {
+        Ok((i, s))
+    } else {
+        Err(nom::Err::Error(nom::error::Error::new(
+            i,
+            nom::error::ErrorKind::Fail,
+        )))
     }
 }
 
@@ -440,9 +462,10 @@ fn parse_tyatom(i: &str) -> IResult<&str, Type> {
     preceded(
         multispace0,
         alt((
-            map(tag("Bool"), |_| Type::Bool),
-            map(tag("Unit"), |_| Type::Unit),
-            map(tag("Self"), |_| Type::TySelf),
+            map(parse_reserved("Nat"), |_| Type::Nat),
+            map(parse_reserved("Bool"), |_| Type::Bool),
+            map(parse_reserved("Unit"), |_| Type::Unit),
+            map(parse_reserved("Self"), |_| Type::TySelf),
             parse_tytagging,
             parse_tyrecord,
             parse_tyencl,
@@ -535,11 +558,11 @@ fn parse_tyarr(i: &str) -> IResult<&str, Type> {
 
 /// <ty> ::= <tyarr>
 fn parse_type(i: &str) -> IResult<&str, Type> {
-    parse_tyarr(i)
+    parse_tyarr.parse(i)
 }
 
 fn parse_type_space(i: &str) -> IResult<&str, Type> {
-    let (i, ty) = parse_type(i)?;
+    let (i, ty) = parse_type.parse(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, ty))
 }
@@ -629,19 +652,25 @@ fn parse_pat(i: &str) -> IResult<&str, Pattern> {
     .parse(i)
 }
 
+/// <zero> ::= "zero"
+fn parse_zero(i: &str) -> IResult<&str, Term> {
+    let (i, _) = parse_reserved("zero").parse(i)?;
+    Ok((i, Term::Zero))
+}
+
 /// <false> ::= "false"
 fn parse_false(i: &str) -> IResult<&str, Term> {
-    map(tag("false"), |_| Term::False).parse(i)
+    map(parse_reserved("false"), |_| Term::False).parse(i)
 }
 
 /// <true> ::= "true"
 fn parse_true(i: &str) -> IResult<&str, Term> {
-    map(tag("true"), |_| Term::True).parse(i)
+    map(parse_reserved("true"), |_| Term::True).parse(i)
 }
 
 // <unit> ::= "unit"
 fn parse_unit(i: &str) -> IResult<&str, Term> {
-    map(tag("unit"), |_| Term::Unit).parse(i)
+    map(parse_reserved("unit"), |_| Term::Unit).parse(i)
 }
 
 // <var> ::= number | string
@@ -649,13 +678,48 @@ fn parse_varnum(i: &str) -> IResult<&str, Term> {
     map(parse_number, Term::Var).parse(i)
 }
 fn parse_varstr(i: &str) -> IResult<&str, Term> {
-    let (i, s) = parse_ident(i)?;
+    let (i, s) = parse_ident.parse(i)?;
     Ok((i, Term::TmpVar(s)))
 }
 /// <var> ::= number | string
 fn parse_var(i: &str) -> IResult<&str, Term> {
     let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
     Ok((i, v))
+}
+
+/// <succ> ::= "succ" <term>
+fn parse_succ(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, parse_reserved("succ")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::Succ(Box::new(t))))
+}
+
+/// <pred> ::= "pred" <term>
+fn parse_pred(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, parse_reserved("pred")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::Pred(Box::new(t))))
+}
+
+fn parse_reserved(ident: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
+    move |i: &str| {
+        let (i, s) = preceded(multispace0, parse_ident_reserved).parse(i)?;
+        if s != ident {
+            Err(nom::Err::Error(nom::error::Error::new(
+                i,
+                nom::error::ErrorKind::Fail,
+            )))
+        } else {
+            Ok((i, ()))
+        }
+    }
+}
+
+/// <iszero> ::= "iszero" <term>
+fn parse_iszero(i: &str) -> IResult<&str, Term> {
+    let (i, _) = parse_reserved("iszero").parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::IsZero(Box::new(t))))
 }
 
 /// <tagging> ::= <ty> ":::" <labelorindex>
@@ -715,11 +779,11 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
 
 #[allow(unused)]
 fn parse_plet(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("let")).parse(i)?;
     let (i, p) = preceded(multispace0, parse_pat).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
     let (t2_renamed, t1_renamed, p_renamed, _n) = t2
         .subst_pat(&t1, &p, 0)
@@ -732,23 +796,23 @@ fn parse_plet(i: &str) -> IResult<&str, Term> {
 
 /// <let> ::= "let" <bound> "=" <term> "in" <term>
 fn parse_let(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
-    let (i, name) = preceded(multispace0, alpha1).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("let")).parse(i)?;
+    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let renamed = t2.subst_name(name);
+    let renamed = t2.subst_name(name.as_str());
     Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
 fn parse_if(i: &str) -> IResult<&str, Term> {
-    let (i, t1) = preceded(tag("if"), parse_term).parse(i)?;
+    let (i, t1) = preceded(parse_reserved("if"), parse_term).parse(i)?;
     let (i, _) = multispace0(i)?;
-    let (i, t2) = preceded(tag("then"), parse_term).parse(i)?;
+    let (i, t2) = preceded(parse_reserved("then"), parse_term).parse(i)?;
     let (i, _) = multispace0(i)?;
-    let (i, t3) = preceded(tag("else"), parse_term).parse(i)?;
+    let (i, t3) = preceded(parse_reserved("else"), parse_term).parse(i)?;
     Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
 }
 
@@ -781,20 +845,20 @@ fn parse_arms(i: &str) -> IResult<&str, Vec<Arm>> {
 
 // <case> ::= "case" <term> "of" <arms>
 fn parse_case(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, tag("case")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("case")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("of")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("of")).parse(i)?;
     let (i, arms) = preceded(multispace0, parse_arms).parse(i)?;
     Ok((i, Term::Case(Box::new(t), arms)))
 }
 
 /// <lettype> ::= "type" <ident> "=" <type> "in" <term>
 fn parse_lettype(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, tag("type")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("type")).parse(i)?;
     let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
     let renamed = t.subst_type_name(name.as_str(), &ty);
     Ok((i, renamed))
@@ -832,8 +896,12 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
             parse_plet,
             parse_let,
             parse_if,
+            parse_succ,
+            parse_pred,
+            parse_iszero,
             parse_tagging.map(Term::Tagging),
             parse_record,
+            parse_zero,
             parse_false,
             parse_true,
             parse_unit,
