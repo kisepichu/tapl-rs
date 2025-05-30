@@ -1,12 +1,20 @@
 # Extensions of simply typed lambda calculus
 
-WIP
-
 ```
 $ cargo run --bin fullsimple
 ```
 
-11.1(p.89)
+11(p.89)
+
+単純型付き λ 計算の拡張は、(型付けされたまま、型安全なまま)表現できるものの範囲を拡張したもの。
+
+- Unit
+- Nat
+- let
+- letrec
+- pattern let
+- record
+- variants, case
 
 ## Syntax
 
@@ -23,6 +31,8 @@ $ cargo run --bin fullsimple
 <atom> ::= <encl> | <abs> | <if> | <let> | <plet> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging> | <lettype>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
+<letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
+<fix> ::= "fix" <term>
 <lettype> ::= "type" <ident> "=" <type> "in" <term>
 <case> ::= "case" <term> "of" <armes>
 <let> ::= "let" <bound> "=" <term> "in" <term>
@@ -35,8 +45,8 @@ $ cargo run --bin fullsimple
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
 <tagging> ::= <tyatom> ":::" <labelorindex>
-<succ> ::= "succ" <term>
 <pred> ::= "pred" <term>
+<succ> ::= "succ" <term>
 <iszero> ::= "iszero" <term>
 <labelorindex> ::= <label> | number
 <label> ::= <ident>
@@ -59,11 +69,11 @@ $ cargo run --bin fullsimple
 <pattagging> ::= <ty> ":::" <parse_labelorindex> | <pattagging> <ident>
 
 
-<ty> ::= <tyarr>
-<tyarr> ::= <tysum> "->" <tyarr> | <tysum>
-<tysumorprod> ::= <tysum> | <typrod>
+<ty> ::= <tysumorarr>
+<tysumorarr> ::= <tysum> | <tyarr>
 <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
-<tyvariant> ::= <tyvariant> <typrod> | <label>
+<tyvariant> ::= <tyvariant> <tyarr> | <label>
+<tyarr> ::= <typrod> "->" <tyarr> | <typrod>
 <typrod> ::= <tyatom> "*" <typrod> | <tyatom>
 <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tynat> | <tyvar> | <tyrecord> | <tytagging> | <tyself>
 <tyencl> ::= "(" <ty> ")"
@@ -103,6 +113,7 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{let}\ t_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
   \quad \mid\ &\mathrm{plet}\ p = t_1\ \mathrm{in}\ t_2 &\quad (\text{pattern let}) \\
   \quad \mid\ & \mathrm{case}\ t\ \mathrm{of} \ p_{\mathrm{tag}i} \Rightarrow t_i \ ^{i\in 1..n} &\quad (\text{case}) \\
+  \quad \mid\ &\mathrm{fix}\ t &\quad (\text{fixed point})
   \\
   \\
 
@@ -111,15 +122,15 @@ v ::=&   &\quad (\text{values}) \\
   \quad \mid\ &\mathrm{unit} &\quad (\text{unit}) \\
   \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
   \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
-  \quad \mid \ &v_\mathrm{n} &\quad (\text{numeric value}) \\
+  \quad \mid \ &v_{\mathrm{n}} &\quad (\text{numeric value}) \\
   \quad \mid\ &\{l_i\mathord=v_i,^{i\in1..n}\} &\quad (\text{record value}) \\
-  \quad \mid\ & v_\mathrm{tag} &\quad (\text{tagging value}) \\
-v_\mathrm{n} ::=& &\quad (\text{numeric values}) \\
+  \quad \mid\ & v_{\mathrm{tag}} &\quad (\text{tagging value}) \\
+v_{\mathrm{n}} ::=& &\quad (\text{numeric values}) \\
   \quad \mid\ &\mathrm{zero} &\quad (\text{zero}) \\
-  \quad \mid\ &\mathrm{succ}\ v_\mathrm{n} &\quad (\text{successor}) \\
+  \quad \mid\ &\mathrm{succ}\ v_{\mathrm{n}} &\quad (\text{successor}) \\
 v_{\mathrm{tag}} ::=& &\quad (\text{tagging value}) \\
   \quad \mid\ &T\mathord{:::}l &\quad (\text{tagging}) \\
-  \quad \mid\ &v_\mathrm{tag}\ v &\quad (\text{tagging application}) \\
+  \quad \mid\ &v_{\mathrm{tag}}\ v &\quad (\text{tagging application}) \\
   \\
 
 
@@ -129,7 +140,13 @@ p ::=&   &\quad (\text{patterns}) \\
   \quad \mid\ & p_{\mathrm{tag}} &\quad (\text{tagging pattern}) \\
 p_{\mathrm{tag}} ::=& &\quad (\text{tagging pattern}) \\
   \quad \mid\ & T\mathord{:::}l\ n\mathord-1\ n\mathord-2\ \dots \ 0 &\quad (\text{tagging}) \\
-  \\
+\end{align*}
+```
+
+デカすぎると render できないっぽい。続き
+
+```math
+\begin{align*}
 
 T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
@@ -146,27 +163,29 @@ T ::=&   &\quad (\text{types}) \\
 \end{align*}
 ```
 
-- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、本文の $\Gamma, x\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように書けば、名無し項のまま表せて、このまま実装できる。しかしこの先に出てくる拡張等でこの方法で形式化できなくなるということかもしれないので様子見。
+- フレッシュな変数を 0 に固定できるように、 contexts の定義を本文と変えている。 $\uparrow^n \Gamma$ を $\Gamma$ の変数を全て $n$ 個シフトしたものとして(独自の記法)、本文の $\Gamma, x\mathord{:}T$ は $\uparrow^1 \Gamma, 0\mathord:T$ のように書けば、名無し項のまま表せて、このまま実装できる。
 - この段階では、 variant type や record のフィールドの順序の違いを区別する。11.8(p.99)
 
 ### Derived forms
 
 ```math
 \begin{align*}
-  \quad & \quad & \text{(derived forms)} \\
-t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
+  \quad & & \quad & \text{(derived forms)} \\
+t_1; t_2 & \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
 \\
-\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ [x\mapsto 0]t_2 \quad & (\text{let'}) \\
+\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 & \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ [x\mapsto 0]t_2 \quad & (\text{let'}) \\
 \\
-\lambda x:T.t_2 \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
+\lambda x:T.t_2 & \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
 \\
 \\
-\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype}) \\
+\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 & \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype}) \\
 \\
-T_1 \times T_2 \times \dots \times T_n \stackrel{\mathrm{def}}{=}\ & \{i\mathord:T_i,^{i \in 1..n}\} \quad & (\text{product type}) \\
+T_1 \times T_2 \times \dots \times T_n & \stackrel{\mathrm{def}}{=}\ & \{i\mathord:T_i,^{i \in 1..n}\} \quad & (\text{product type}) \\
 \\
 l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
-+\ l_n\ T_{n1}\ T_{n2} \dots T_{nm_n} \stackrel{\mathrm{def}}{=}\ & \langle l_i\mathord: T_{i1} \mathord{\rightarrow} \dots \mathord{\rightarrow} T_{im_i} \mathord{\rightarrow} \mathrm{Self},^{i \in 1..n}\rangle \quad & (\text{sum type}) \\
++\ l_n\ T_{n1}\ T_{n2} \dots T_{nm_n} & \stackrel{\mathrm{def}}{=}\ & \langle l_i\mathord: T_{i1} \mathord{\rightarrow} \dots \mathord{\rightarrow} T_{im_i} \mathord{\rightarrow} \mathrm{Self},^{i \in 1..n}\rangle \quad & (\text{sum type}) \\
+\\
+\mathrm{letrec}\ x\mathord{:}T = t_1\ \mathrm{in}\ t_2 & \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ x = \mathrm{fix}\ (\lambda\mathord{:}T.t_1)\ \mathrm{in}\ t_2 \quad & (\text{letrec}) \\
 \end{align*}
 ```
 
@@ -175,6 +194,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 - それぞれ名無し項用に本文と定義を変えている。同じになることは未証明
 - let は abs を使った糖衣構文にはしない。11.5(p.95)
 - 名前 $x$ を置換する $[x\rightarrow 0]$ の実装は `subst_name` in [`fullsimple/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/parser.rs)
+- sum のために Self を variants 全体に展開するものとして実装したら、本文にまだ出てきていないのに再帰型を書けるようになってしまった。 `type N = Zero + Succ Self` ができて、 case で場合分けできる。性質をちゃんと考えていないので例等には入れないでおく(sum の糖衣構文の展開後だけに表れるものとする)。
 
 ### Parsing
 
@@ -182,7 +202,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
   - `<record>` は、ラベルがない形式(tuple) も parse し、 0 から自動でラベルを付けて record に変換する。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
-- 糖衣構文(syntactic sugar, derived forms)を含む。
+- 上記の糖衣構文(syntactic sugar, derived forms)を含む。
   - `<seq>` は、`<app>` と ";" の列が左結合で sequence に変換され、脱糖衣される。
   - `<let>` は、let' に変換され、脱糖衣される。
   - `<abs>` は abs に変換されるか、 abs' に変換され脱糖衣される。
@@ -214,7 +234,11 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{iszero}\ t_1 \rightarrow \mathrm{iszero}\ t_1'} \quad & \text{(E-ISZERO)} \\
 \\
 \frac{}{\mathrm{if} \ \mathrm{true} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_2} \quad & \text{(E-IFTRUE)} \\
-\\
+\end{align*}
+```
+
+```math
+\begin{align*}
 \frac{}{\mathrm{if} \ \mathrm{false} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_3} \quad & \text{(E-IFFALSE)} \\
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad & \text{(E-IF)} \\
@@ -230,17 +254,27 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{}{\{l_i\mathord=v_i,^{i\in 1..n}\}.l_j \rightarrow v_j} \quad &(\text{E-PROJRCD}) \\
 \\
 \frac{t_1\rightarrow t_1'}{t_1.l \rightarrow t_1'.l} \quad &(\text{E-PROJ}) \\
-\\
+\end{align*}
+```
+
+```math
+\begin{align*}
 \frac{t_j\rightarrow t_j'}{\{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j, l_k\mathord=t_k^{k\in j+1..n}\} \\ \rightarrow \{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j', l_k\mathord=t_k^{k\in j+1..n}\}} \quad &(\text{E-RCD}) \\
 \\
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
-\begin{align*}
-\text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
-p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
-\end{align*}
+% \begin{align*}
+%   \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
+%   p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
+% \end{align*}
+  \text{where }v_{\mathrm{tag}j} := T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n (n \ge 0),& \\
+  p_{\mathrm{tag}i} := T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 (n_i \ge 0).& \\
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
 \mathrm{case}\ t'\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n}} \quad &(\text{E-CASE}) \\
+\\
+\frac{}{\mathrm{fix}\ (\lambda\mathord{:}T.t) \rightarrow \uparrow^{-1} ([0 \mapsto \mathrm{fix}(\lambda\mathord{:}T.t)]t)} \quad &(\text{E-FIXBETA}) \\
+\\
+\frac{t \rightarrow t'}{\mathrm{fix}\ t \rightarrow \mathrm{fix}\ t'} \quad &(\text{E-FIX}) \\
 \end{align*}
 ```
 
@@ -283,7 +317,11 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{pred}\ t_1 : \mathrm{Nat}} \quad & \text{(T-PRED)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{iszero}\ t_1 : \mathrm{Bool}} \quad & \text{(T-ISZERO)} \\
-\\
+\end{align*}
+```
+
+```math
+\begin{align*}
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\
 \\
 \frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
@@ -298,6 +336,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \\
 \frac{\vdash t\mathord:\langle l_i\mathord:T_i,^{i \in 1..n}\rangle \quad \forall ^{i\in n}\vdash p_i : \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord\Rightarrow \varDelta_i\ \land\ \uparrow^{|\varDelta_i|}\Gamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
 \\
+\frac{\Gamma \vdash t\mathord{:}T\mathord{\rightarrow}T}{\Gamma \vdash \mathrm{fix}\ t : T} \quad & \text{(T-FIX)} \\
 \end{align*}
 ```
 
@@ -318,3 +357,33 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 ```
 
 ### examples
+
+```
+$ cargo run --bin fullsimple
+> type OptionNat = Some Nat + None in
+letrec iseven: OptionNat->Bool = \o:OptionNat.
+  case o of
+    | OptionNat:::Some n =>
+      if iszero n then
+        true
+      else if iszero (pred n) then
+        false
+      else
+        iseven (OptionNat:::Some (pred (pred n)))
+    | OptionNat:::None => false
+in
+{
+  iseven (OptionNat:::Some zero),
+  iseven (OptionNat:::Some (succ zero)),
+  iseven (OptionNat:::Some (succ (succ zero))),
+  iseven OptionNat:::None
+}
+
+input= let 0 = fix \:<Some:Nat->Self, None:Self>->Bool.\:<Some:Nat->Self, None:Self>.case 0 of | <Some:Nat->Self, None:Self>:::Some 0 => if iszero 0 then true else if iszero pred (0) then false else 2 (<Some:Nat->Self, None:Self>:::Some pred (pred (0)))| <Some:Nat->Self, None:Self>:::None => false in {0=0 (<Some:Nat->Self, None:Self>:::Some zero), 1=0 (<Some:Nat->Self, None:Self>:::Some succ zero), 2=0 (<Some:Nat->Self, None:Self>:::Some succ (succ zero)), 3=0 <Some:Nat->Self, None:Self>:::None}
+     : {0:Bool, 1:Bool, 2:Bool, 3:Bool}
+   ->* {0=true, 1=false, 2=true, 3=false}
+
+>
+```
+
+[`fullsimple/tests/parse_typing_eval.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/tests/parse_typing_eval.rs)

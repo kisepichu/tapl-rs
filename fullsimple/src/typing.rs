@@ -204,36 +204,36 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 ))
             }
         }
-        Term::Case(t1, arms) => {
-            let tyt = type_of(ctx, t1)?;
+        Term::Case(t, arms) => {
+            let tyt = type_of(ctx, t)?;
             match tyt.clone() {
                 Type::TyTagging(tyfields) => {
                     // none when arms.len() == 0
                     let mut t_: Option<(Term, Type)> = None;
-                    for (bi, f0i) in arms.iter().zip(tyfields) {
-                        let ptybi = pat_type_of(ctx, &Pattern::TmpTagging(bi.ptag.clone()))?;
+                    for (arm, tyf) in arms.iter().zip(tyfields) {
+                        let ptyarm = pat_type_of(ctx, &Pattern::TmpTagging(arm.ptag.clone()))?;
 
                         {
-                            if bi.ptag.label != f0i.label {
+                            if arm.ptag.label != tyf.label {
                                 return Err(format!(
                                     "type check failed: {}\n, case expression currently requires exact ordering of labels.\n  expected {}, but found {}",
-                                    t, f0i.label, bi.ptag.label
+                                    t, tyf.label, arm.ptag.label
                                 ));
                             }
                         }
-                        if ptybi.ty != tyt {
+                        if ptyarm.ty != tyt {
                             return Err(format!(
                                 "type check failed: {}\n  pattern type {} does not match term type {}",
-                                t, ptybi.ty, tyt
+                                t, ptyarm.ty, tyt
                             ));
                         }
-                        let ctx_ = ptybi.context.clone();
-                        let tybi = type_of(&ctx_, &bi.term)?;
+                        let ctx_ = ptyarm.context.clone();
+                        let tyarm = type_of(&ctx_, &arm.term)?;
 
                         if t_.is_none() {
-                            t_ = Some((bi.term.clone(), tybi));
+                            t_ = Some((arm.term.clone(), tyarm));
                         } else if let Some((_, tyt_)) = &t_ {
-                            if tyt_ != &tybi {
+                            if tyt_ != &tyarm {
                                 return Err(format!(
                                     "type check failed: {}\n  arms of case expression have different types:\n  {}: {},\n  {}: {}",
                                     t,
@@ -245,8 +245,8 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                                         )
                                     },
                                     t_.clone().expect("in let Some block").1,
-                                    bi.term,
-                                    tybi
+                                    arm.term,
+                                    tyarm
                                 ));
                             }
                         }
@@ -259,10 +259,49 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 )),
             }
         }
+        Term::Fix(t1) => {
+            let ty1 = type_of(ctx, t1)?;
+            if let Type::Arr(ty11, ty12) = ty1 {
+                if *ty11 == *ty12 {
+                    Ok(*ty11)
+                } else {
+                    Err(format!(
+                        "type check failed: {}\n  expected arrow type with same input and output types, but found {}: {}",
+                        t,
+                        t1,
+                        Type::Arr(ty11, ty12)
+                    ))
+                }
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected arrow type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
     }
 }
 
-#[allow(unused)]
+fn expand_self(ty: &Type, tyself: &Type) -> Type {
+    match ty {
+        Type::Arr(t1, t2) => Type::Arr(
+            Box::new(expand_self(t1, tyself)),
+            Box::new(expand_self(t2, tyself)),
+        ),
+        Type::TyRecord(fields) => Type::TyRecord(
+            fields
+                .iter()
+                .map(|f| TyField {
+                    label: f.label.clone(),
+                    ty: expand_self(&f.ty, tyself),
+                })
+                .collect(),
+        ),
+        Type::TySelf => tyself.clone(),
+        _ => ty.clone(),
+    }
+}
+
 fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
     match p {
         Pattern::Var(_x, ty) => {
@@ -359,10 +398,10 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 let n = nargs.len();
                 let tyargs = tyarr_to_vec(ty0);
                 let mut ctx_ = ctx.clone();
-                for (i, tya) in (0..n).rev().zip(tyargs) {
+                for (i, _tya) in (0..n).rev().zip(tyargs) {
                     if let Type::Arr(ty1, ty2) = pty.ty {
-                        let ptyarg =
-                            pat_type_of(&ctx_, &Pattern::Var(i.to_string(), *ty1.clone()))?;
+                        let ty1_ = expand_self(&ty1, ty);
+                        let ptyarg = pat_type_of(&ctx_, &Pattern::Var(i.to_string(), ty1_))?;
                         ctx_ = ptyarg.context;
                         pty = PatType {
                             ty: *ty2.clone(),

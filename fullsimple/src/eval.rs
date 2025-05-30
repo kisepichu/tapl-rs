@@ -75,6 +75,7 @@ impl Term {
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(Term::Case(Box::new(t), bs))
                 }
+                Term::Fix(t1) => Ok(Term::Fix(Box::new(walk(t1, d, c)?))),
             }
         }
         walk(self, d, 0)
@@ -148,6 +149,7 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Term::Case(Box::new(t), bs))
             }
+            Term::Fix(t1) => Ok(Term::Fix(Box::new(walk(j, s, c, t1)?))),
         }
     }
     walk(j, s, 0, t)
@@ -304,6 +306,11 @@ fn eval1(t: &Term) -> Result<Term, String> {
             Ok(t)
         }
         Term::Case(t, bs) => eval1(t).map(|t1| Term::Case(Box::new(t1), bs.clone())),
+        Term::Fix(t) => match &**t {
+            Term::Abs(_ty1, t2) => term_subst_top(&Term::Fix(t.clone()), t2),
+            _ if t.isval() => Err(format!("internal error: expected Abs, but got {}", t)),
+            _ => Ok(Term::Fix(Box::new(eval1(t)?))),
+        },
         _ => Err("eval1: no rule applies".to_string()),
     }
 }

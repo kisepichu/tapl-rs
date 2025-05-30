@@ -17,7 +17,6 @@ pub enum Type {
     TyVar(String),
     TyRecord(Vec<TyField>),
     TyTagging(Vec<TyField>),
-    #[allow(unused)]
     TySelf,
 }
 

@@ -17,8 +17,8 @@ use nom::{
 
 fn reserved_check(ident: &str) -> bool {
     let rs = [
-        "let", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero", "succ", "pred",
-        "iszero", "case", "of", "type", "Unit", "Bool", "Nat", "Self",
+        "let", "letrec", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero",
+        "succ", "pred", "iszero", "case", "fix", "of", "type", "Unit", "Bool", "Nat", "Self",
     ];
     rs.iter().any(|s| *s == ident)
 }
@@ -83,6 +83,7 @@ impl Term {
                         })
                         .collect::<Vec<_>>(),
                 ),
+                Term::Fix(t1) => Term::Fix(Box::new(walk(t1, z, c))),
             }
         }
         walk(self, zero_name, 0)
@@ -148,19 +149,15 @@ impl Term {
                     })
                     .collect::<Vec<_>>(),
             ),
+            Term::Fix(t1) => Term::Fix(Box::new(t1.subst_type_name(type_name, ty2))),
         }
     }
     fn subst_ptag(&self, ptag: &PTmpTag, offset: usize) -> Result<(Term, PTmpTag, usize), &str> {
-        let t_renamed = ptag
-            .nargs
-            .iter()
-            .fold(self.clone(), |acc, arg| {
-                acc.subst_name(arg)
-                    .shift(1)
-                    .expect("plus shift does not fail")
-            })
-            .shift(-1)
-            .expect("-1 shift after +1 shift does not fail");
+        let t_renamed = ptag.nargs.iter().fold(self.clone(), |acc, arg| {
+            acc.shift(1)
+                .expect("plus shift does not fail")
+                .subst_name(arg)
+        });
         let args_renamed = (0..ptag.nargs.len())
             .rev()
             .map(|i| (i + offset).to_string())
@@ -503,46 +500,14 @@ fn parse_typrod(i: &str) -> IResult<&str, Type> {
     }
 }
 
-/// <tyvariant> ::= <tyvariant> <typrod> | <label>
-fn parse_tyvariant(i: &str) -> IResult<&str, TyField> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
-    let (i, args) = many0(preceded(multispace0, parse_typrod)).parse(i)?;
-    let ty = args.iter().fold(Type::TySelf, |acc, ty| {
-        Type::Arr(Box::new(ty.clone()), Box::new(acc))
-    });
-    Ok((i, TyField { label, ty }))
-}
-fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
-    let (i, _) = preceded(multispace0, tag("+")).parse(i)?;
-    preceded(multispace0, parse_tyvariant).parse(i)
-}
-/// <tysum> ::= <typrod> "+" <tysum> | <typrod>
-fn parse_tysum(i: &str) -> IResult<&str, Type> {
-    let (i, tyf1) = parse_tyvariant.parse(i)?;
-    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
-        many0(parse_tysumsub).parse(i)?
-    } else {
-        many1(parse_tysumsub).parse(i)?
-    };
-    Ok((
-        i,
-        Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
-    ))
-}
-
-/// <tysumorprod> ::= <tysum> | <typrod>
-fn parse_tysumorprod(i: &str) -> IResult<&str, Type> {
-    alt((parse_tysum, parse_typrod)).parse(i)
-}
-
 /// <tyarrsub> ::= "->" <tyarr>
 fn parse_tyarrsub(i: &str) -> IResult<&str, Type> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
     preceded(multispace0, parse_tyarr).parse(i)
 }
-/// <tyarr> ::= <tysum> <tyarrsub> | <tysum>
+/// <tyarr> ::= <typrod> "->" <tyarr> | <typrod>
 fn parse_tyarr(i: &str) -> IResult<&str, Type> {
-    let (i, tyatom) = preceded(multispace0, parse_tysumorprod).parse(i)?;
+    let (i, tyatom) = preceded(multispace0, parse_typrod).parse(i)?;
     let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
     let res = once(tyatom)
@@ -556,9 +521,41 @@ fn parse_tyarr(i: &str) -> IResult<&str, Type> {
     Ok((i, res))
 }
 
-/// <ty> ::= <tyarr>
+/// <tyvariant> ::= <tyvariant> <tyarr> | <label>
+fn parse_tyvariant(i: &str) -> IResult<&str, TyField> {
+    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, args) = many0(preceded(multispace0, parse_tyarr)).parse(i)?;
+    let ty = args.iter().fold(Type::TySelf, |acc, ty| {
+        Type::Arr(Box::new(ty.clone()), Box::new(acc))
+    });
+    Ok((i, TyField { label, ty }))
+}
+fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
+    let (i, _) = preceded(multispace0, tag("+")).parse(i)?;
+    preceded(multispace0, parse_tyvariant).parse(i)
+}
+/// <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
+fn parse_tysum(i: &str) -> IResult<&str, Type> {
+    let (i, tyf1) = parse_tyvariant.parse(i)?;
+    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
+        many0(parse_tysumsub).parse(i)?
+    } else {
+        many1(parse_tysumsub).parse(i)?
+    };
+    Ok((
+        i,
+        Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
+    ))
+}
+
+/// <tysumorarr> ::= <tysum> | <tyarr>
+fn parse_tysumorarr(i: &str) -> IResult<&str, Type> {
+    alt((parse_tysum, parse_tyarr)).parse(i)
+}
+
+/// <ty> ::= <tysum>
 fn parse_type(i: &str) -> IResult<&str, Type> {
-    parse_tyarr.parse(i)
+    parse_tysumorarr.parse(i)
 }
 
 fn parse_type_space(i: &str) -> IResult<&str, Type> {
@@ -583,7 +580,6 @@ fn parse_pattagging_args(i: &str) -> IResult<&str, PTmpTag> {
     ))
 }
 
-#[allow(unused)]
 /// <patfield> ::= <label> ":" <pat> | <pat>
 fn parse_patfield_patwithlabel(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
     let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
@@ -777,7 +773,6 @@ fn parse_record(i: &str) -> IResult<&str, Term> {
     Ok((i, Term::Record(fields)))
 }
 
-#[allow(unused)]
 fn parse_plet(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, parse_reserved("let")).parse(i)?;
     let (i, p) = preceded(multispace0, parse_pat).parse(i)?;
@@ -785,9 +780,10 @@ fn parse_plet(i: &str) -> IResult<&str, Term> {
     let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
     let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let (t2_renamed, t1_renamed, p_renamed, _n) = t2
-        .subst_pat(&t1, &p, 0)
-        .map_err(|e| nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail)))?;
+    let (t2_renamed, t1_renamed, p_renamed, _n) = t2.subst_pat(&t1, &p, 0).map_err(|e| {
+        println!("subst_pat: {}", e);
+        nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
+    })?;
     Ok((
         i,
         Term::Plet(p_renamed, Box::new(t1_renamed), Box::new(t2_renamed)),
@@ -827,7 +823,7 @@ fn parse_arm(i: &str) -> IResult<&str, Arm> {
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 
     let (t_renamed, ptag_renamed, _) = t.subst_ptag(&ptag, 0).map_err(|e| {
-        println!("Error in subst_ptag: {}", e);
+        println!("subst_ptag: {}", e);
         nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
     })?;
     Ok((
@@ -864,6 +860,34 @@ fn parse_lettype(i: &str) -> IResult<&str, Term> {
     Ok((i, renamed))
 }
 
+/// <fix> ::= "fix" <term>
+fn parse_fix(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, parse_reserved("fix")).parse(i)?;
+    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
+    Ok((i, Term::Fix(Box::new(t))))
+}
+
+/// <letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
+fn parse_letrec(i: &str) -> IResult<&str, Term> {
+    let (i, _) = preceded(multispace0, parse_reserved("letrec")).parse(i)?;
+    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
+    let (i, _) = preceded(multispace0, char(':')).parse(i)?;
+    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
+    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
+    let t1_renamed = t1.subst_name(name.as_str());
+    let t2_renamed = t2.subst_name(name.as_str());
+    Ok((
+        i,
+        Term::Let(
+            Box::new(Term::Fix(Box::new(Term::Abs(ty, Box::new(t1_renamed))))),
+            Box::new(t2_renamed),
+        ),
+    ))
+}
+
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
 fn parse_abs(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
@@ -891,6 +915,8 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
     preceded(
         multispace0,
         alt((
+            parse_letrec,
+            parse_fix,
             parse_lettype,
             parse_case,
             parse_plet,

@@ -6,6 +6,8 @@ $ cargo run --bin simplebool
 
 Figure 9-1(p.78), Figure 8-1(p.70), Figure 3-1(p.25)
 
+単純型付き λ 計算は、型無し λ 計算を、型付けされた項のみ評価するようにし、関数の型 $\rightarrow$ を導入したもの。
+
 ## Syntax
 
 `fn parse` in [`simplebool/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/parser.rs), `enum Term` in [`simplebool/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/syntax/term.rs)

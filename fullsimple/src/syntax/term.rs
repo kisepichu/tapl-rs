@@ -52,10 +52,10 @@ pub enum Term {
     Tagging(Tag),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Box<Term>, Box<Term>),
-    #[allow(unused)]
     Plet(Pattern, Box<Term>, Box<Term>),
     Projection(Box<Term>, String),
     Case(Box<Term>, Vec<Arm>),
+    Fix(Box<Term>),
 }
 
 impl fmt::Display for Term {
@@ -172,6 +172,13 @@ impl fmt::Display for Term {
                             .map(|b| b.to_string())
                             .fold("".to_string(), |acc, x| acc + &x)
                     })
+                }
+                Term::Fix(t) => {
+                    if has_arg_after {
+                        format!("fix ({})", print(t, false, false))
+                    } else {
+                        format!("fix {}", print(t, false, false))
+                    }
                 }
             }
         }

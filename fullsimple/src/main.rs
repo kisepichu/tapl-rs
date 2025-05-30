@@ -40,21 +40,21 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                println!("{:?}", t);
+                // println!("{:?}", t);
 
                 let ctx = Context::default();
 
                 let ty = match type_of(&ctx, &t) {
                     Ok(ty) => ty,
                     Err(e) => {
-                        println!("input= {}", t);
+                        println!("\ninput= {}", t);
                         println!("{}\n", e);
                         continue;
                     }
                 };
                 // println!("{:?}", ty);
 
-                println!("input= {}: {}", t, ty);
+                println!("\ninput= {}\n     : {}", t, ty);
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {

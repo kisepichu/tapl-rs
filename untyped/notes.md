@@ -6,6 +6,8 @@ cargo run --bin untyped
 
 Figure 5-3(p.54), 6.3(p.61)
 
+型無し λ 計算は、 λ 抽象と適用からなる強力な計算モデルで、型付けされていない項を評価する。
+
 ## Syntax
 
 `fn parse` in [`untyped/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/parser.rs), `enum Term` in [`untyped/src/syntax.rs`](https://github.com/kisepichu/tapl-rs/blob/main/untyped/src/syntax.rs)
@@ -47,7 +49,7 @@ v ::=&   &\quad (\text{values}) \\
 
 $$
 \begin{align*}
-\frac{}{(\lambda.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [`0 \mapsto\ \uparrow^{1} v_2`]t_{12}} \quad &\text{(E-APPABS)} \\
+\frac{}{(\lambda.t_{12})\ v_2 \rightarrow\ \uparrow^{-1} [0 \mapsto\ \uparrow^{1} v_2]t_{12}} \quad &\text{(E-APPABS)} \\
 \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
