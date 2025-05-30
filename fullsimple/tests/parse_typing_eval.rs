@@ -60,6 +60,7 @@ true
 #[case(r"{a0=unit, false}.1.0", None, None)]
 #[case(r"\:Bool.0 {a0=unit, false}", None, None)]
 #[case(r"(\:Bool->Bool.0) {a0=unit, false}", None, None)]
+// 11
 #[case(r"(\:Bool->Bool.0) {a0=unit, false}", None, None)]
 #[case(r"(\:Bool.0) {a0=unit, 1=false}", None, None)]
 #[case(r"(\:Bool.0) {a0=unit, false}.1", Some(r"Bool"), Some(r"false"))]
@@ -117,6 +118,7 @@ case Ty:::0 false true false of
     None,
     None
 )]
+// 21
 #[case(
     r"
 type Ty = <Unit->Self, Bool->Bool->Bool->Self> in
@@ -147,6 +149,51 @@ middle f f t f
     ",
     Some(r"Bool"),
     Some(r"true")
+)]
+#[case(
+    r"
+type S = A + B Nat in
+case S:::B (succ zero) of
+  | S:::A => zero
+  | S:::B n => n
+    ",
+    Some(r"Nat"),
+    Some(r"succ zero")
+)]
+#[case(
+    r"
+type S = A + B Nat in
+case S:::A of
+  | S:::A => 0
+  | S:::B n => n
+    ",
+    None,
+    None
+)]
+#[case(
+    r"
+type S = A + B Nat in
+let f = \s:S.
+  case s of
+    | S:::A => 0
+    | S:::B n => n
+in
+f S:::A
+    ",
+    None,
+    None
+)]
+#[case(
+    r"
+type S = <A:Self> in
+let f = \s:S.
+  case s of
+    | S:::A => 0
+in
+f S:::A
+    ",
+    Some(r"<A:Self>"),
+    Some(r"<A:Self>:::A")
 )]
 #[case(
     r"
@@ -190,6 +237,7 @@ swap {true, false}
     Some(r"{0:Bool, 1:Bool}"),
     Some(r"{0=false, 1=true}")
 )]
+// 31
 #[case(
     r"
 type P = Pair Bool Bool in
@@ -290,6 +338,7 @@ iszero true
     None,
     None
 )]
+// 41
 #[case(
     r"
 succ true
@@ -316,40 +365,139 @@ let iseven = fix \iseven:Nat->Bool.
       iseven (pred (pred n))
 in
 let two = succ (succ zero) in
-iseven two
+let three = succ two in
+{iseven two, iseven three}
     ",
-    Some(r"Bool"),
-    Some(r"true")
+    Some(r"{0:Bool, 1:Bool}"),
+    Some(r"{0=true, 1=false}")
 )]
-// #[case(
-//     r"
-// type SumNat = Zero + Succ Self in
-// let realnat = fix \realnat:SumNat->Nat.\n:SumNat.
-//   case n of
-//     | SumNat:::Zero => zero
-//     | SumNat:::Succ p => succ (realnat p)
-// in
-// let two = SumNat:::Succ (SumNat:::Succ SumNat:::Zero) in
-// realnat two
-//     ",
-//     Some(r"Nat"),
-//     Some(r"succ (succ zero)")
-// )]
-// #[case(
-//     r"
-// type N = Zero + Succ Self in
-// let plus = \n:N.\m:N.
-//   case n of
-//     | N:::Zero => m
-//     | N:::Succ p => N:::Succ (plus p m)
-// in
-// let two = N:::Succ (N:::Succ N:::Zero) in
-// let three = N:::Succ (N:::Succ (N:::Succ N:::Zero)) in
-// plus two three
-//     ",
-//     Some(r""),
-//     Some(r"")
-// )]
+#[case(
+    r"
+type SumNat = Zero + Succ Self in
+let realnat = fix \realnat:SumNat->Nat.\n:SumNat.
+  case n of
+    | SumNat:::Zero => zero
+    | SumNat:::Succ p => succ (realnat p)
+in
+let two = SumNat:::Succ (SumNat:::Succ SumNat:::Zero) in
+realnat two
+    ",
+    Some(r"Nat"),
+    Some(r"succ (succ zero)")
+)]
+#[case(
+    r"
+type B = Real Bool + Church (Self->Self->Self) in
+let tru = B:::Church \t:B.\f:B.t in
+let fls = B:::Church \t:B.\f:B.f in
+let realbool = \b:B.
+  case b of
+    | B:::Real rb => rb
+    | B:::Church cb =>
+      case cb (B:::Real true) (B:::Real false) of
+        | B:::Real rb => rb
+        | B:::Church _ => false
+in
+let churchbool = \b:B.
+  case b of
+    | B:::Real rb => if rb then \t:B.\f:B.t else \t:B.\f:B.f
+    | B:::Church cb => cb
+in
+let churchand = \b:B.\c:B.
+  let cb = churchbool b in
+  let cc = B:::Church (churchbool c) in
+  cb cc fls
+in
+
+type N = Real Nat + Church ((Self->Self)->Self->Self) in
+let zro = N:::Church \s:N->N.\z:N.z in
+let one = N:::Church \s:N->N.\z:N.s z  in
+let two = N:::Church \s:N->N.\z:N.s (s z) in
+let suc = \n:N.
+  case n of
+    | N:::Real rn => N:::Real (succ rn)
+    | N:::Church cn => N:::Church \s:N->N.\z:N. s (cn s z)
+in
+let realnat = \n:N.
+  case n of
+    | N:::Real rn => rn
+    | N:::Church cn =>
+      case cn suc (N:::Real zero) of
+        | N:::Real rn => rn
+        | N:::Church _ => zero
+in
+
+{
+  realbool tru,
+  realbool fls,
+  realbool (churchand tru tru),
+  realbool (churchand tru fls),
+  realbool (churchand fls fls),
+  realbool (B:::Church (churchbool (B:::Real true))),
+  realbool (B:::Church (churchbool (B:::Real false))),
+  realnat zro,
+  realnat one,
+  realnat (suc two),
+}
+    ",
+    Some(r"{0:Bool, 1:Bool, 2:Bool, 3:Bool, 4:Bool, 5:Bool, 6:Bool, 7:Nat, 8:Nat, 9:Nat}"),
+    Some(r"{0=true, 1=false, 2=true, 3=false, 4=false, 5=true, 6=false, 7=zero, 8=succ zero, 9=succ (succ (succ zero))}")
+)]
+#[case(
+    r"
+type SumNat = Zero + Succ Self in
+type N = SumNat in
+let sumnatplus = fix \plus:N->N->N.
+  \n:N.\m:N.
+    case n of
+      | N:::Zero => m
+      | N:::Succ p => N:::Succ (plus p m)
+in
+let two = N:::Succ (N:::Succ N:::Zero) in
+let three = N:::Succ (N:::Succ (N:::Succ N:::Zero)) in
+let ans = sumnatplus two three in
+
+let realnat = fix \realnat:N->Nat.\n:N.
+  case n of
+    | N:::Zero => zero
+    | N:::Succ p => succ (realnat p)
+in
+realnat ans
+    ",
+    Some(r"Nat"),
+    Some(r"succ (succ (succ (succ (succ zero))))")
+)]
+#[case(
+    r"
+let realnateq = fix \eq:Nat->Nat->Bool.
+  \n:Nat.\m:Nat.
+    if iszero n then
+      iszero m
+    else if iszero m then
+      false
+    else
+      eq (pred n) (pred m)
+in
+let realnatplus = fix \plus:Nat->Nat->Nat.
+  \n:Nat.\m:Nat.
+    if iszero n then
+      m
+    else
+      succ (plus (pred n) m)
+in
+
+let two = succ (succ zero) in
+let three = succ two in
+let five = succ (succ three) in
+{
+  realnateq zero zero,
+  realnateq two three,
+  realnateq five (realnatplus two three)
+}
+    ",
+    Some(r"{0:Bool, 1:Bool, 2:Bool}"),
+    Some(r"{0=true, 1=false, 2=true}")
+)]
 // #[case(
 //     r"
 //
