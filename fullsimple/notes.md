@@ -37,6 +37,7 @@ $ cargo run --bin fullsimple
 <tagging> ::= <tyatom> ":::" <labelorindex>
 <succ> ::= "succ" <term>
 <pred> ::= "pred" <term>
+<iszero> ::= "iszero" <term>
 <labelorindex> ::= <label> | number
 <label> ::= <ident>
 <bound> ::= <ident>
@@ -94,6 +95,7 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{zero} &\quad (\text{constant zero}) \\
   \quad \mid\ &\mathrm{succ}\ t &\quad (\text{successor}) \\
   \quad \mid\ &\mathrm{pred}\ t &\quad (\text{predecessor}) \\
+  \quad \mid\ &\mathrm{iszero}\ t &\quad (\text{iszero}) \\
   \quad \mid\ &\{l_i\mathord:T_i,^{i\in1..n}\} &\quad (\text{record}) \\
   \quad \mid\ &t.l &\quad (\text{projection}) \\
   \quad \mid\ & T\mathord{:::}l &\quad (\text{tagging}) \\
@@ -205,6 +207,12 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{pred}\ t_1 \rightarrow \mathrm{pred}\ t_1'} \quad & \text{(E-PRED)} \\
 \\
+\frac{}{\mathrm{iszero} \ \mathrm{zero} \rightarrow \mathrm{true}} \quad & \text{(E-ISZEROZERO)} \\
+\\
+\frac{}{\mathrm{iszero} \ (\mathrm{succ}\ v_1) \rightarrow \mathrm{false}} \quad & \text{(E-ISZEROSUCC)} \\
+\\
+\frac{t_1 \rightarrow t_1'}{\mathrm{iszero}\ t_1 \rightarrow \mathrm{iszero}\ t_1'} \quad & \text{(E-ISZERO)} \\
+\\
 \frac{}{\mathrm{if} \ \mathrm{true} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_2} \quad & \text{(E-IFTRUE)} \\
 \\
 \frac{}{\mathrm{if} \ \mathrm{false} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_3} \quad & \text{(E-IFFALSE)} \\
@@ -273,6 +281,8 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{succ}\ t_1 : \mathrm{Nat}} \quad & \text{(T-SUCC)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{pred}\ t_1 : \mathrm{Nat}} \quad & \text{(T-PRED)} \\
+\\
+\frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{iszero}\ t_1 : \mathrm{Bool}} \quad & \text{(T-ISZERO)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\
 \\

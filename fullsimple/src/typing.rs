@@ -84,6 +84,17 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 ))
             }
         }
+        Term::IsZero(t1) => {
+            let ty1 = type_of(ctx, t1)?;
+            if ty1 == Type::Nat {
+                Ok(Type::Bool)
+            } else {
+                Err(format!(
+                    "type check failed: {}\n  expected Nat type, but found {}: {}",
+                    t, t1, ty1
+                ))
+            }
+        }
         Term::Record(fields) => {
             let tyfields = fields
                 .iter()

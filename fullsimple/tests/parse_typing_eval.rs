@@ -217,33 +217,6 @@ not B:::T
 )]
 #[case(
     r"
-type N = Zero + Succ Self in
-let iszero = \n:N.
-  case n of
-    | N:::Zero => true
-    | N:::Succ p => false
-in
-iszero N:::Zero
-    ",
-    Some(r"Bool"),
-    Some(r"true")
-)]
-#[case(
-    r"
-type N = Zero + Succ Self in
-let iszero = \n:N.
-  case n of
-    | N:::Zero => true
-    | N:::Succ p => false
-in
-let two = N:::Succ (N:::Succ N:::Zero) in
-iszero two
-    ",
-    Some(r"Bool"),
-    Some(r"false")
-)]
-#[case(
-    r"
 T Bool:::T true
     ",
     None,
@@ -269,6 +242,90 @@ issome (OptionBool:::Some true)
     Some(r"Bool"),
     Some(r"true")
 )]
+#[case(
+    r"
+type N = Zero + Succ Self in
+let iszero_ = \n:N.
+  case n of
+    | N:::Zero => true
+    | N:::Succ p => false
+in
+iszero_ N:::Zero
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"
+type N = Zero + Succ Self in
+let iszero_ = \n:N.
+  case n of
+    | N:::Zero => true
+    | N:::Succ p => false
+in
+let two = N:::Succ (N:::Succ N:::Zero) in
+iszero_ two
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
+#[case(
+    r"
+iszero zero
+    ",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"
+iszero (succ zero)
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
+#[case(
+    r"
+iszero true
+    ",
+    None,
+    None
+)]
+#[case(
+    r"
+succ true
+    ",
+    None,
+    None
+)]
+// #[case(
+//     r"
+// type SumNat = Zero + Succ Self in
+// letrec realnat = \n:SumNat.
+//   case n of
+//     | SumNat:::Zero => zero
+//     | SumNat:::Succ p => succ (realnat p)
+// in
+// let two = SumNat:::Succ (SumNat:::Succ SumNat:::Zero) in
+// realnat two
+//     ",
+//     Some(r"Nat"),
+//     Some(r"succ (succ zero)")
+// )]
+// #[case(
+//     r"
+// type N = Zero + Succ Self in
+// let plus = \n:N.\m:N.
+//   case n of
+//     | N:::Zero => m
+//     | N:::Succ p => N:::Succ (plus p m)
+// in
+// let two = N:::Succ (N:::Succ N:::Zero) in
+// let three = N:::Succ (N:::Succ (N:::Succ N:::Zero)) in
+// plus two three
+//     ",
+//     Some(r""),
+//     Some(r"")
+// )]
 // #[case(
 //     r"
 //

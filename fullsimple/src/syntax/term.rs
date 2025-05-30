@@ -47,6 +47,7 @@ pub enum Term {
     Zero,
     Succ(Box<Term>),
     Pred(Box<Term>),
+    IsZero(Box<Term>),
     Record(Vec<Field>),
     Tagging(Tag),
     If(Box<Term>, Box<Term>, Box<Term>),
@@ -101,6 +102,13 @@ impl fmt::Display for Term {
                         format!("pred ({})", print(t, false, false))
                     } else {
                         format!("pred {}", print(t, false, false))
+                    }
+                }
+                Term::IsZero(t) => {
+                    if has_arg_after {
+                        format!("iszero ({})", print(t, false, false))
+                    } else {
+                        format!("iszero {}", print(t, false, false))
                     }
                 }
                 Term::Record(fields) => {
@@ -174,7 +182,8 @@ impl fmt::Display for Term {
 impl Term {
     pub fn isval(&self) -> bool {
         match self {
-            Term::Unit | Term::True | Term::False | Term::Abs(_, _) => true,
+            Term::Unit | Term::True | Term::False | Term::Zero | Term::Abs(_, _) => true,
+            Term::Succ(v1) if v1.isval() => true,
             Term::Record(fields) => fields.iter().all(|field| field.term.isval()),
             Term::Tagging(_tag) => true,
             Term::App(t1, t2) => {
