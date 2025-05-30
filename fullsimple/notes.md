@@ -140,7 +140,11 @@ p ::=&   &\quad (\text{patterns}) \\
   \quad \mid\ & p_{\mathrm{tag}} &\quad (\text{tagging pattern}) \\
 p_{\mathrm{tag}} ::=& &\quad (\text{tagging pattern}) \\
   \quad \mid\ & T\mathord{:::}l\ n\mathord-1\ n\mathord-2\ \dots \ 0 &\quad (\text{tagging}) \\
-  \\
+\end{align*}
+```
+デカすぎると render できないっぽい。続き
+```math
+\begin{align*}
 
 T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
@@ -164,22 +168,22 @@ T ::=&   &\quad (\text{types}) \\
 
 ```math
 \begin{align*}
-  \quad & \quad & \text{(derived forms)} \\
-t_1; t_2 \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
+  \quad & & \quad & \text{(derived forms)} \\
+t_1; t_2 & \stackrel{\mathrm{def}}{=}\ & (\lambda\mathord{:}\mathrm{Unit}.\uparrow^1 t_2) t_1 \quad & (\text{sequence}) \\
 \\
-\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ [x\mapsto 0]t_2 \quad & (\text{let'}) \\
+\mathrm{let}\ x=t_1\ \mathrm{in}\ t_2 & \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ t_1\ \mathrm{in}\ [x\mapsto 0]t_2 \quad & (\text{let'}) \\
 \\
-\lambda x:T.t_2 \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
+\lambda x:T.t_2 & \stackrel{\mathrm{def}}{=}\ & \lambda T.[x\mapsto 0]t_2 \quad & (\text{abs'})
 \\
 \\
-\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype}) \\
+\mathrm{lettype}\ x=T_1\ \mathrm{in}\ t_2 & \stackrel{\mathrm{def}}{=}\ & [x \mapsto T_1]t_2 \quad & (\text{lettype}) \\
 \\
-T_1 \times T_2 \times \dots \times T_n \stackrel{\mathrm{def}}{=}\ & \{i\mathord:T_i,^{i \in 1..n}\} \quad & (\text{product type}) \\
+T_1 \times T_2 \times \dots \times T_n & \stackrel{\mathrm{def}}{=}\ & \{i\mathord:T_i,^{i \in 1..n}\} \quad & (\text{product type}) \\
 \\
 l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
-+\ l_n\ T_{n1}\ T_{n2} \dots T_{nm_n} \stackrel{\mathrm{def}}{=}\ & \langle l_i\mathord: T_{i1} \mathord{\rightarrow} \dots \mathord{\rightarrow} T_{im_i} \mathord{\rightarrow} \mathrm{Self},^{i \in 1..n}\rangle \quad & (\text{sum type}) \\
++\ l_n\ T_{n1}\ T_{n2} \dots T_{nm_n} & \stackrel{\mathrm{def}}{=}\ & \langle l_i\mathord: T_{i1} \mathord{\rightarrow} \dots \mathord{\rightarrow} T_{im_i} \mathord{\rightarrow} \mathrm{Self},^{i \in 1..n}\rangle \quad & (\text{sum type}) \\
 \\
-\mathrm{letrec}\ x\mathord{:}T = t_1\ \mathrm{in}\ t_2 \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ x = \mathrm{fix}\ (\lambda\mathord{:}T.t_1)\ \mathrm{in}\ t_2 \quad & (\text{letrec}) \\
+\mathrm{letrec}\ x\mathord{:}T = t_1\ \mathrm{in}\ t_2 & \stackrel{\mathrm{def}}{=}\ & \mathrm{let}\ x = \mathrm{fix}\ (\lambda\mathord{:}T.t_1)\ \mathrm{in}\ t_2 \quad & (\text{letrec}) \\
 \end{align*}
 ```
 
@@ -228,7 +232,10 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{iszero}\ t_1 \rightarrow \mathrm{iszero}\ t_1'} \quad & \text{(E-ISZERO)} \\
 \\
 \frac{}{\mathrm{if} \ \mathrm{true} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_2} \quad & \text{(E-IFTRUE)} \\
-\\
+\end{align*}
+```
+```math
+\begin{align*}
 \frac{}{\mathrm{if} \ \mathrm{false} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_3} \quad & \text{(E-IFFALSE)} \\
 \\
 \frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad & \text{(E-IF)} \\
@@ -244,7 +251,10 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{}{\{l_i\mathord=v_i,^{i\in 1..n}\}.l_j \rightarrow v_j} \quad &(\text{E-PROJRCD}) \\
 \\
 \frac{t_1\rightarrow t_1'}{t_1.l \rightarrow t_1'.l} \quad &(\text{E-PROJ}) \\
-\\
+\end{align*}
+```
+```math
+\begin{align*}
 \frac{t_j\rightarrow t_j'}{\{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j, l_k\mathord=t_k^{k\in j+1..n}\} \\ \rightarrow \{l_i\mathord=v_i^{i\in 1..j-1}, l_j\mathord=t_j', l_k\mathord=t_k^{k\in j+1..n}\}} \quad &(\text{E-RCD}) \\
 \\
 \frac{}{\mathrm{case}\ v_{\mathrm{tag}j}\ \mathrm{of}\ p_{\mathrm{tag}i} \Rightarrow t_i\ ^{i\in 1..n} \rightarrow \mathit{match}(p_{\mathrm{tag}j}, v_{\mathrm{tag}j})t_j} \quad &(\text{E-CASEVARIANT}) \\
@@ -252,10 +262,8 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 %   \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
 %   p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
 % \end{align*}
-\begin{aligned}
-  \text{where }v_{\mathrm{tag}j} &:= T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n &(n \ge 0), \\
-  p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 &(n_i \ge 0). \\
-\end{aligned}\\
+  \text{where }v_{\mathrm{tag}j} := T\mathord{:::}l_j\ v_1\ v_2\ \dots\ v_n (n \ge 0),& \\
+  p_{\mathrm{tag}i} := T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 (n_i \ge 0).& \\
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
 \mathrm{case}\ t'\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n}} \quad &(\text{E-CASE}) \\
@@ -305,7 +313,10 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{pred}\ t_1 : \mathrm{Nat}} \quad & \text{(T-PRED)} \\
 \\
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Nat}}{\Gamma \vdash \mathrm{iszero}\ t_1 : \mathrm{Bool}} \quad & \text{(T-ISZERO)} \\
-\\
+\end{align*}
+```
+```math
+\begin{align*}
 \frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad & \text{(T-IF)} \\
 \\
 \frac{\Gamma \vdash t_1\mathord{:}T_1 \quad \uparrow^1\Gamma, 0\mathord{:}T_1 \vdash t_2\mathord{:}T_2}{\Gamma \vdash \mathrm{let}\ t_1\ \mathrm{in}\ t_2: T_2} \quad &(\text{T-LET}) \\
