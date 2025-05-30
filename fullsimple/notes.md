@@ -23,6 +23,7 @@ $ cargo run --bin fullsimple
 <atom> ::= <encl> | <abs> | <if> | <let> | <plet> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging> | <lettype>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
+<fix> ::= "fix" <term>
 <lettype> ::= "type" <ident> "=" <type> "in" <term>
 <case> ::= "case" <term> "of" <armes>
 <let> ::= "let" <bound> "=" <term> "in" <term>
@@ -35,8 +36,8 @@ $ cargo run --bin fullsimple
 <fieldseq> ::= <field> "," <fieldseq> | null
 <field> ::= <label> "=" <term> | <term>
 <tagging> ::= <tyatom> ":::" <labelorindex>
-<succ> ::= "succ" <term>
 <pred> ::= "pred" <term>
+<succ> ::= "succ" <term>
 <iszero> ::= "iszero" <term>
 <labelorindex> ::= <label> | number
 <label> ::= <ident>
@@ -103,6 +104,7 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &\mathrm{let}\ t_1\ \mathrm{in}\ t_2 &\quad (\text{let}) \\
   \quad \mid\ &\mathrm{plet}\ p = t_1\ \mathrm{in}\ t_2 &\quad (\text{pattern let}) \\
   \quad \mid\ & \mathrm{case}\ t\ \mathrm{of} \ p_{\mathrm{tag}i} \Rightarrow t_i \ ^{i\in 1..n} &\quad (\text{case}) \\
+  \quad \mid\ &\mathrm{fix}\ t &\quad (\text{fixed point})
   \\
   \\
 
@@ -175,6 +177,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
 - それぞれ名無し項用に本文と定義を変えている。同じになることは未証明
 - let は abs を使った糖衣構文にはしない。11.5(p.95)
 - 名前 $x$ を置換する $[x\rightarrow 0]$ の実装は `subst_name` in [`fullsimple/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/fullsimple/src/parser.rs)
+- sum のために Self を variants 全体に展開するものとして実装したら、本文にまだ出てきていないのに再帰型を書けるようになってしまった。 `type N = Zero + Succ Self` ができて、 case で場合分けできる。性質をちゃんと考えていないので例等には入れないでおく(sum の糖衣構文の展開後だけに表れるものとする)。
 
 ### Parsing
 
@@ -182,7 +185,7 @@ l_1\ T_{11}\ T_{12} \dots T_{1m_1} + \dots & \\
   - `<record>` は、ラベルがない形式(tuple) も parse し、 0 から自動でラベルを付けて record に変換する。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
 - `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
-- 糖衣構文(syntactic sugar, derived forms)を含む。
+- 上記の糖衣構文(syntactic sugar, derived forms)を含む。
   - `<seq>` は、`<app>` と ";" の列が左結合で sequence に変換され、脱糖衣される。
   - `<let>` は、let' に変換され、脱糖衣される。
   - `<abs>` は abs に変換されるか、 abs' に変換され脱糖衣される。
@@ -241,6 +244,10 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \\
 \frac{t \rightarrow t'}{\mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} \rightarrow
 \mathrm{case}\ t'\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n}} \quad &(\text{E-CASE}) \\
+\\
+\frac{}{\mathrm{fix}\ (\lambda\mathord{:}T.t) \rightarrow \uparrow^{-1} ([0 \mapsto \mathrm{fix}(\lambda\mathord{:}T.t)]t)} \quad &(\text{E-FIXBETA}) \\
+\\
+\frac{t \rightarrow t'}{\mathrm{fix}\ t \rightarrow \mathrm{fix}\ t'} \quad &(\text{E-FIX}) \\
 \end{align*}
 ```
 
@@ -298,6 +305,7 @@ p_{\mathrm{tag}i} &:= T\mathord{:::}l_i\ n_i\mathord-1\ n_i\mathord-2\ \dots\ 0 
 \\
 \frac{\vdash t\mathord:\langle l_i\mathord:T_i,^{i \in 1..n}\rangle \quad \forall ^{i\in n}\vdash p_i : \langle l_i\mathord:T_i,^{i \in 1..n}\rangle\mathord\Rightarrow \varDelta_i\ \land\ \uparrow^{|\varDelta_i|}\Gamma, \varDelta_i \vdash t_i\mathord:T'}{\Gamma \vdash \mathrm{case}\ t\ \mathrm{of}\ p_i \Rightarrow t_i\ ^{i\in 1..n} : T'} \quad & \text{(T-CASE)} \\
 \\
+\frac{\Gamma \vdash t\mathord{:}T\mathord{\rightarrow}T}{\Gamma \vdash \mathrm{fix}\ t : T} \quad & \text{(T-FIX)} \\
 \end{align*}
 ```
 
