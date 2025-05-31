@@ -1,9 +1,12 @@
 mod eval;
 mod parser;
+mod span;
 mod syntax;
 
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
+
+use crate::span::Spanned;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
@@ -27,12 +30,19 @@ fn main() -> Result<()> {
                 let t = match parser::parse(line.as_str()) {
                     Ok(t) => t,
                     Err(e) => {
-                        println!("parse error: {:?}", e);
+                        println!("{}", e);
                         continue;
                     }
                 };
+                let t = Spanned {
+                    v: t,
+                    start: 0,
+                    line: 0,
+                    column: 0,
+                };
 
                 println!("input= {}", t);
+                // println!("{:?}", t);
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
