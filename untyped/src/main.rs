@@ -42,6 +42,7 @@ fn main() -> Result<()> {
                 };
 
                 println!("input= {}", t);
+                // println!("{:?}", t);
                 let t = match eval::eval(&t) {
                     Ok(t) => t,
                     Err(e) => {

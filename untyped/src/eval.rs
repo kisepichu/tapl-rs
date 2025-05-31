@@ -15,6 +15,8 @@ fn term_shift(t: &Spanned<Term>, d: isize) -> Result<Spanned<Term>, ErrorWithPos
                             message: "term_shift: shift resulted in negative variable".to_string(),
                             line: sp_t.line,
                             column: sp_t.column,
+                            input: "".to_string(),
+                            kind: None,
                         })?;
                     Ok(Term::Var(s))
                 } else {
