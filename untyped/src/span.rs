@@ -11,20 +11,29 @@ pub struct Spanned<T> {
     pub column: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub struct ErrorWithPos {
     pub message: String,
-    pub input: String,
     pub kind: Option<nom::error::ErrorKind>,
     pub line: u32,
     pub column: usize,
+}
+
+impl PartialOrd for ErrorWithPos {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some((self.line, self.column).cmp(&(other.line, other.column)))
+    }
+}
+impl Ord for ErrorWithPos {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.line, self.column).cmp(&(other.line, other.column))
+    }
 }
 
 impl<'a> ParseError<Span<'a>> for ErrorWithPos {
     fn from_error_kind(input: Span<'a>, kind: nom::error::ErrorKind) -> Self {
         Self {
             message: "Parsing failed".to_string(),
-            input: input.to_string(),
             kind: Some(kind),
             line: input.location_line(),
             column: input.get_utf8_column(),
@@ -64,7 +73,6 @@ impl<E: std::fmt::Display> nom::error::FromExternalError<Span<'_>, E> for ErrorW
     fn from_external_error(input: Span, kind: nom::error::ErrorKind, e: E) -> Self {
         ErrorWithPos {
             message: format!("External error: {}", e),
-            input: input.to_string(),
             kind: Some(kind),
             line: input.location_line(),
             column: input.get_utf8_column(),
@@ -77,14 +85,14 @@ impl std::fmt::Display for ErrorWithPos {
         if let Some(k) = self.kind {
             write!(
                 f,
-                "{}, kind={:?}. '{}' at line {}, column {}",
-                self.message, k, self.input, self.line, self.column
+                "{} at line {}, column {}: kind={:?}",
+                self.message, self.line, self.column, k,
             )
         } else {
             write!(
                 f,
-                "{}: '{}' at line {}, column {}",
-                self.message, self.input, self.line, self.column
+                "{} at line {}, column {}",
+                self.message, self.line, self.column
             )
         }
     }
@@ -114,7 +122,6 @@ pub fn spanned_res<T, U>(
             message: e,
             line: sp.line,
             column: sp.column,
-            input: "".to_string(),
             kind: None,
         }),
     }
