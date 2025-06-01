@@ -12,7 +12,10 @@ fn term_shift(t: &Spanned<Term>, d: isize) -> Result<Spanned<Term>, ErrorWithPos
                 if *x >= c {
                     let s: usize =
                         usize::from_isize(*x as isize + d).ok_or_else(|| ErrorWithPos {
-                            message: "term_shift: shift resulted in negative variable".to_string(),
+                            message:
+                                "internal error: term_shift: shift resulted in negative variable"
+                                    .to_string(),
+                            level: 100,
                             line: sp_t.line,
                             column: sp_t.column,
                             kind: None,

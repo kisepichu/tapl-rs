@@ -27,10 +27,10 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                let t = match parser::parse(line.as_str()) {
+                let t = match parser::parse_and_render_err(line.as_str()) {
                     Ok(t) => t,
-                    Err(e) => {
-                        println!("{}", e);
+                    Err((e, display_position)) => {
+                        println!("{}\n{}", display_position, e);
                         continue;
                     }
                 };

@@ -14,26 +14,39 @@ pub struct Spanned<T> {
 #[derive(Debug, PartialEq, Clone, Eq)]
 pub struct ErrorWithPos {
     pub message: String,
+    pub level: usize,
     pub kind: Option<nom::error::ErrorKind>,
     pub line: u32,
     pub column: usize,
 }
 
+#[derive(Debug)]
+pub struct Prg<T> {
+    pub st: Spanned<T>,
+    pub lasterr: Option<ErrorWithPos>,
+}
+
 impl PartialOrd for ErrorWithPos {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some((self.line, self.column).cmp(&(other.line, other.column)))
+        Some(self.cmp(other))
     }
 }
 impl Ord for ErrorWithPos {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.line, self.column).cmp(&(other.line, other.column))
+        (self.level, self.line, self.column, self.message.len()).cmp(&(
+            other.level,
+            other.line,
+            other.column,
+            other.message.len(),
+        ))
     }
 }
 
 impl<'a> ParseError<Span<'a>> for ErrorWithPos {
     fn from_error_kind(input: Span<'a>, kind: nom::error::ErrorKind) -> Self {
         Self {
-            message: "Parsing failed".to_string(),
+            message: "unexpected token".to_string(),
+            level: 10,
             kind: Some(kind),
             line: input.location_line(),
             column: input.get_utf8_column(),
@@ -53,11 +66,7 @@ impl<'a> ParseError<Span<'a>> for ErrorWithPos {
         //     self.column,
         //     (other.line, other.column) > (self.line, self.column)
         // );
-        if (other.line, other.column) > (self.line, self.column) {
-            other
-        } else {
-            self
-        }
+        if self < other { other } else { self }
     }
 }
 
@@ -73,6 +82,7 @@ impl<E: std::fmt::Display> nom::error::FromExternalError<Span<'_>, E> for ErrorW
     fn from_external_error(input: Span, kind: nom::error::ErrorKind, e: E) -> Self {
         ErrorWithPos {
             message: format!("External error: {}", e),
+            level: 100,
             kind: Some(kind),
             line: input.location_line(),
             column: input.get_utf8_column(),
@@ -120,6 +130,7 @@ pub fn spanned_res<T, U>(
         }),
         Err(e) => Err(ErrorWithPos {
             message: e,
+            level: 100,
             line: sp.line,
             column: sp.column,
             kind: None,

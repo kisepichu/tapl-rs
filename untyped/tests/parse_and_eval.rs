@@ -43,7 +43,7 @@ const EQUAL: &str = r"(
 #[case(r"(\\\\3 1(2 1 0)) (\\1 0) \\1 0", r"\\(\\1 0) 1 ((\\1 0) 1 0)")] // plus c_1 c_1 == c_2' == \\(\\1 0) 1 ((\\1 0) 1 0) -> \\(\\1 0) 1 (1 0) -> \\1(1 0)
 fn test_parse_and_eval(#[case] input: &str, #[case] expected: &str) {
     let t = Spanned {
-        v: untyped::parser::parse(input).unwrap(),
+        v: untyped::parser::parse_and_render_err(input).unwrap(),
         start: 0,
         line: 0,
         column: 0
@@ -81,7 +81,7 @@ fn test_parse_and_eval(#[case] input: &str, #[case] expected: &str) {
 fn test_parse_and_eval_equal(#[case] input: &str, #[case] expected: &str) {
     let input = EQUAL.to_string() + input;
     let t = Spanned {
-        v: untyped::parser::parse(input.as_str()).unwrap(),
+        v: untyped::parser::parse_and_render_err(input.as_str()).unwrap(),
         start: 0,
         line: 0,
         column: 0

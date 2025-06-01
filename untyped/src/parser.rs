@@ -1,5 +1,6 @@
 use crate::{
-    span::{ErrorWithPos, Span, Spanned},
+    parser::utils::{chmax_err, update_err, with_pos},
+    span::{ErrorWithPos, Prg, Span, Spanned},
     syntax::Term,
 };
 use nom::{
@@ -10,118 +11,7 @@ use nom::{
     multi::many0,
     sequence::preceded,
 };
-
-struct Prg<T> {
-    st: Spanned<T>,
-    lasterr: Option<ErrorWithPos>,
-}
-
-fn with_pos<'a, F, O>(
-    mut parser: F,
-) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Prg<O>, ErrorWithPos>
-where
-    F: Parser<Span<'a>, Output = O, Error = ErrorWithPos>,
-{
-    move |i: Span<'a>| {
-        parser.parse(i).map(|(rest, v)| {
-            let st = Spanned {
-                v,
-                start: i.location_offset(),
-                line: i.location_line(),
-                column: i.get_utf8_column(),
-            };
-            (rest, Prg { st, lasterr: None })
-        })
-    }
-}
-
-fn update_err_pos<'a, F, O>(
-    mut parser: F,
-) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Prg<O>, ErrorWithPos>
-where
-    F: Parser<Span<'a>, Output = Prg<O>, Error = ErrorWithPos>,
-{
-    move |i: Span<'a>| {
-        parser
-            .parse(i)
-            .map(|(rest, sp)| {
-                let st = Spanned {
-                    v: sp.st.v,
-                    start: i.location_offset(),
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                };
-                (
-                    rest,
-                    Prg {
-                        st,
-                        lasterr: sp.lasterr,
-                    },
-                )
-            })
-            .map_err(|e| match e {
-                nom::Err::Error(e) => {
-                    let e_ = ErrorWithPos {
-                        message: e.message,
-                        line: i.location_line(),
-                        column: i.get_utf8_column(),
-                        kind: e.kind,
-                    };
-                    nom::Err::Error(e_)
-                }
-                _ => {
-                    let e = ErrorWithPos {
-                        message: "Parse Error".to_string(),
-                        line: i.location_line(),
-                        column: i.get_utf8_column(),
-                        kind: None,
-                    };
-                    nom::Err::Error(e)
-                }
-            })
-    }
-}
-
-fn chmax_err<'a, F, O>(
-    lasterr: &Option<ErrorWithPos>,
-    mut parser: F,
-) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Prg<O>, ErrorWithPos>
-where
-    F: Parser<Span<'a>, Output = Prg<O>, Error = ErrorWithPos>,
-{
-    move |i: Span<'a>| {
-        parser.parse(i).map_err(|e| match e {
-            nom::Err::Error(e) => {
-                let e_ = ErrorWithPos {
-                    message: e.message,
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                    kind: e.kind,
-                };
-                let mx = if let Some(lasterr) = lasterr.clone() {
-                    std::cmp::max(e_, lasterr)
-                } else {
-                    e_
-                };
-                nom::Err::Error(mx)
-            }
-            _ => {
-                let e = ErrorWithPos {
-                    message: "Parse Error".to_string(),
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                    kind: None,
-                };
-                let mx = if let Some(lasterr) = lasterr.clone() {
-                    std::cmp::max(e, lasterr)
-                } else {
-                    e
-                };
-                nom::Err::Error(mx)
-            }
-        })
-    }
-}
+mod utils;
 
 // <term> ::= <app>
 // <app> ::= <atom> <app> | <atom>
@@ -133,9 +23,14 @@ where
 /// <var> ::= number
 fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (_i, _check) = alphanumeric1.parse(i)?;
-    update_err_pos(with_pos(map_res(digit1, |s: Span| {
-        s.fragment().parse::<usize>().map(Term::Var)
-    })))
+    // parse error assumed to be possible
+    update_err(
+        "variable must be numeric",
+        90,
+        with_pos(map_res(digit1, |s: Span| {
+            s.fragment().parse::<usize>().map(Term::Var)
+        })),
+    )
     .parse(i)
 }
 
@@ -150,8 +45,12 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <encl> ::= "(" <term> ")"
 fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, _) = char('(').parse(i)?;
-    let (i, t) = parse_term_space.parse(i)?;
-    let (i, _) = chmax_err(&t.lasterr, with_pos(char(')'))).parse(i)?;
+    let (i, t) = update_err("term expected", 20, parse_term_space).parse(i)?;
+    let (i, _) = chmax_err(
+        &t.lasterr,
+        update_err("')' expected", 50, with_pos(char(')'))),
+    )
+    .parse(i)?;
     Ok((i, t))
     // delimited(char('('), parse_term_space, char(')')).parse(i)
 }
@@ -183,7 +82,8 @@ fn parse_app(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 ))
             }
             e => Err(nom::Err::Error(ErrorWithPos {
-                message: format!("internal error: unknown error: {}", e),
+                message: format!("internal error: {}", e),
+                level: 100,
                 kind: None,
                 line: i.location_line(),
                 column: i.get_utf8_column(),
@@ -192,6 +92,7 @@ fn parse_app(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     } else {
         Err(nom::Err::Error(ErrorWithPos {
             message: "internal error: many0 did not take it to the end".to_string(),
+            level: 100,
             kind: None,
             line: i.location_line(),
             column: i.get_utf8_column(),
@@ -210,58 +111,65 @@ fn parse_term_space(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     Ok((i, t))
 }
 
-pub fn display_position(input: &str, line: u32, column: usize) {
+pub fn display_position(input: &str, line: u32, column: usize) -> String {
     println!();
     let lines: Vec<&str> = input.lines().collect();
     if lines.is_empty() {
-        println!("\n^");
-        return;
+        return "\n^".to_string();
     }
     if line as usize > lines.len() {
-        println!("error while displaying position");
-        return;
+        return "error while displaying position".to_string();
     }
     let target_line = lines[line as usize - 1];
     if target_line.is_empty() {
-        println!("{}\n^", target_line);
-        return;
+        return format!("{}\n^", target_line);
     }
     if column > target_line.len() + 1 {
-        println!("error while displaying position");
-        return;
+        return "error while displaying position".to_string();
     }
-    println!("{}", target_line);
-    println!("{:>width$}^", "", width = column - 1);
+    format!("{}\n", target_line) + &format!("{:>width$}^", "", width = column - 1)
 }
 
-pub fn parse(input: &str) -> Result<Term, String> {
-    let (rest, t) = parse_term_space(Span::new(input)).map_err(|e| {
-        if let nom::Err::Error(e) = e {
-            display_position(input, e.line, e.column);
-            e.to_string()
-        } else {
-            "Unknown parsing error".to_string()
-        }
+pub fn parse(input: &str) -> Result<Term, ErrorWithPos> {
+    let (rest, t) = parse_term_space(Span::new(input)).map_err(|e| match e {
+        nom::Err::Error(e) => e,
+        e => ErrorWithPos {
+            message: format!("internal error: {}", e),
+            level: 100,
+            kind: None,
+            line: 0,
+            column: 0,
+        },
     })?;
     if rest.is_empty() {
         Ok(t.st.v)
+    } else if let Some(lasterr) = t.lasterr {
+        Err(lasterr)
     } else {
-        let e = ErrorWithPos {
-            message: "Parse failed, input not fully consumed".to_string(),
+        Err(ErrorWithPos {
+            message: "input not fully consumed".to_string(),
+            level: 100,
             kind: None,
             line: rest.location_line(),
             column: rest.get_utf8_column(),
-        };
-        display_position(input, e.line, e.column);
+        })
+    }
+}
 
-        Err(e.to_string())
+pub fn parse_and_render_err(input: &str) -> Result<Term, (String, String)> {
+    match parse(input) {
+        Ok(t) => Ok(t),
+        Err(e) => Err((
+            format!("Parsing failed: {}", e),
+            display_position(input, e.line, e.column),
+        )),
     }
 }
 
 mod test {
     use rstest::rstest;
 
-    use crate::{span::Spanned, syntax::Term};
+    use crate::{parser::parse_and_render_err, span::Spanned, syntax::Term};
 
     // dummy Spanned Term for testing
     #[allow(unused)]
@@ -292,6 +200,14 @@ mod test {
             (Ok(t), Ok(u)) => term_eq(t, u),
             (Err(et), Err(eu)) => et == eu,
             _ => false,
+        }
+    }
+
+    #[allow(unused)]
+    fn parse_without_display_position(input: &str) -> Result<Term, String> {
+        match parse_and_render_err(input) {
+            Ok(t) => Ok(t),
+            Err((e, _)) => Err(e),
         }
     }
 
@@ -377,7 +293,7 @@ mod test {
             b(Term::Abs(b(Term::Var(0))))
         ))
     )]
-    #[case(r"\", Err("Parsing failed at line 1, column 2: kind=Char".to_string()))]
+    #[case(r"\", Err("Parsing failed: unexpected token at line 1, column 2: kind=Char".to_string()))]
     #[case(
         r"
 \\\
@@ -390,20 +306,50 @@ mod test {
   )
 )
         ",
-        Err("Parsing failed at line 8, column 9: kind=Char".to_string())
+        Err("Parsing failed: variable must be numeric at line 8, column 9: kind=Digit".to_string())
+    )]
+    #[case(
+        r"
+\\\
+(
+  (
+    0
+  )
+  (
+    2(1 0) \ 0 # 3
+  )
+)
+        ",
+        Err("Parsing failed: ')' expected at line 8, column 16: kind=Char".to_string())
     )]
     #[case(
         r"((()(())))",
-        Err("Parsing failed at line 1, column 4: kind=Char".to_string())
+        Err("Parsing failed: term expected at line 1, column 4: kind=Char".to_string())
+    )]
+    #[case(
+        r"(",
+        Err("Parsing failed: term expected at line 1, column 2: kind=Char".to_string())
+    )]
+    #[case(
+        r"( 0 ",
+        Err("Parsing failed: ')' expected at line 1, column 5: kind=Char".to_string())
+    )]
+    #[case(
+        r"( a ",
+        Err("Parsing failed: variable must be numeric at line 1, column 3: kind=Digit".to_string())
+    )]
+    #[case(
+        r"( # ",
+        Err("Parsing failed: term expected at line 1, column 2: kind=Char".to_string())
     )]
     fn test_parse_term(#[case] input: &str, #[case] expected: Result<Term, String>) {
-        use crate::parser::parse;
         println!("input: {input}");
+        let actual = parse_without_display_position(input);
         assert!(
-            term_eq_res(&parse(input), &expected),
+            term_eq_res(&actual, &expected),
             "Assertion failed:\ninput: {input}\nexpected: {:?}\nactual: {:?}",
             expected,
-            parse(input),
+            actual,
         );
     }
 }
