@@ -1,12 +1,13 @@
 mod eval;
 mod parser;
+mod span;
 mod syntax;
 mod typing;
 
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 use syntax::context::Context;
-use typing::type_of;
+use typing::type_of_spanned;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
@@ -30,29 +31,32 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                let t = match parser::parse(line.as_str()) {
+                let t = match parser::parse_spanned_and_render_err(line.as_str()) {
                     Ok(t) => t,
-                    Err(e) => {
-                        println!("{}", e);
+                    Err((e, display_position)) => {
+                        println!("{}\n{}", display_position, e);
                         continue;
                     }
                 };
                 // println!("{:?}", t);
 
                 let ctx = Context::default();
-
-                let ty = match type_of(&ctx, &t) {
+                let ty = match type_of_spanned(&ctx, &t) {
                     Ok(ty) => ty,
                     Err(e) => {
-                        println!("input= {}", t);
-                        println!("{}", e);
+                        println!("input= {}", t.v);
+                        println!(
+                            "{}\n{}",
+                            parser::display_position(line.as_str(), e.line, e.column),
+                            e
+                        );
                         continue;
                     }
                 };
                 // println!("{:?}", ty);
 
-                println!("input= {}: {}", t, ty);
-                let t = match eval::eval(&t) {
+                println!("input= {}: {}", t.v, ty);
+                let t = match eval::eval(&t.v) {
                     Ok(t) => t,
                     Err(e) => {
                         println!("eval error: {}", e);

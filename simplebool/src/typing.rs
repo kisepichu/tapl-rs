@@ -1,6 +1,9 @@
 use rstest::rstest;
 
-use crate::syntax::{context::Context, term::Term, r#type::Type};
+use crate::{
+    span::{ErrorWithPos, Spanned},
+    syntax::{context::Context, term::Term, r#type::Type},
+};
 
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
@@ -14,41 +17,41 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         },
         Term::Abs(ty, t2) => {
             let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of(&ctx, t2)?;
+            let ty2 = type_of(&ctx, &t2.v)?;
             Ok(Type::Arr(Box::new(ty.clone()), Box::new(ty2.clone())))
         }
         Term::App(t1, t2) => {
-            let ty1 = type_of(ctx, t1)?;
-            let ty2 = type_of(ctx, t2)?;
+            let ty1 = type_of(ctx, &t1.v)?;
+            let ty2 = type_of(ctx, &t2.v)?;
             match ty1 {
                 Type::Arr(ty11, ty12) => {
                     if *ty11 == ty2 {
                         Ok(*ty12.clone())
                     } else {
-                        let t1 = t1.to_string();
-                        let t1 = if t1.len() <= 20 {
-                            t1
+                        let t1_str = t1.v.to_string();
+                        let t1_str = if t1_str.len() <= 20 {
+                            t1_str
                         } else {
-                            t1[..20].to_string() + "..."
+                            t1_str[..20].to_string() + "..."
                         };
                         Err(format!(
                             "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
-                            t, t1, ty11, t2, ty2
+                            t, t1_str, ty11, t2.v, ty2
                         ))
                     }
                 }
                 _ => Err(format!(
                     "type check failed: {}\n  expected arrow type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 )),
             }
         }
         Term::True => Ok(Type::Bool),
         Term::False => Ok(Type::Bool),
         Term::If(t1, t2, t3) => {
-            let ty1 = type_of(ctx, t1)?;
-            let ty2 = type_of(ctx, t2)?;
-            let ty3 = type_of(ctx, t3)?;
+            let ty1 = type_of(ctx, &t1.v)?;
+            let ty2 = type_of(ctx, &t2.v)?;
+            let ty3 = type_of(ctx, &t3.v)?;
             if ty1 == Type::Bool && ty2 == ty3 {
                 Ok(ty2)
             } else if ty2 != ty3 {
@@ -59,8 +62,98 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected boolean type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
+            }
+        }
+    }
+}
+
+pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
+    match &t.v {
+        Term::Var(x) => match ctx.get(*x) {
+            Some(ty) => Ok(ty.clone()),
+            None => Err(ErrorWithPos {
+                message: format!("type check failed: {}\n: unbound variable {}", t.v, x),
+                level: 100,
+                kind: None,
+                line: t.line,
+                column: t.column,
+            }),
+        },
+        Term::Abs(ty, t2) => {
+            let ctx = ctx.clone().push(ty.clone());
+            let ty2 = type_of_spanned(&ctx, t2)?;
+            Ok(Type::Arr(Box::new(ty.clone()), Box::new(ty2.clone())))
+        }
+        Term::App(t1, t2) => {
+            let ty1 = type_of_spanned(ctx, t1)?;
+            let ty2 = type_of_spanned(ctx, t2)?;
+            match ty1 {
+                Type::Arr(ty11, ty12) => {
+                    if *ty11 == ty2 {
+                        Ok(*ty12.clone())
+                    } else {
+                        let t1_str = t1.v.to_string();
+                        let t1_str = if t1_str.len() <= 20 {
+                            t1_str
+                        } else {
+                            t1_str[..20].to_string() + "..."
+                        };
+                        Err(ErrorWithPos {
+                            message: format!(
+                                "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
+                                t.v, t1_str, ty11, t2.v, ty2
+                            ),
+                            level: 100,
+                            kind: None,
+                            line: t2.line,
+                            column: t2.column,
+                        })
+                    }
+                }
+                _ => Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected arrow type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 100,
+                    kind: None,
+                    line: t1.line,
+                    column: t1.column,
+                }),
+            }
+        }
+        Term::True => Ok(Type::Bool),
+        Term::False => Ok(Type::Bool),
+        Term::If(t1, t2, t3) => {
+            let ty1 = type_of_spanned(ctx, t1)?;
+            let ty2 = type_of_spanned(ctx, t2)?;
+            let ty3 = type_of_spanned(ctx, t3)?;
+            if ty1 == Type::Bool && ty2 == ty3 {
+                Ok(ty2)
+            } else if ty2 != ty3 {
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  arms of conditional have different types:\n  {}, {}",
+                        t.v, ty2, ty3
+                    ),
+                    level: 100,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
+            } else {
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected boolean type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 100,
+                    kind: None,
+                    line: t1.line,
+                    column: t1.column,
+                })
             }
         }
     }

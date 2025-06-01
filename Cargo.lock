@@ -480,6 +480,7 @@ name = "simplebool"
 version = "0.1.0"
 dependencies = [
  "nom",
+ "nom_locate",
  "num",
  "rstest",
  "rustyline",
