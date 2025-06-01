@@ -14,6 +14,8 @@ use nom::{
     multi::{many0, many1},
     sequence::{delimited, preceded},
 };
+// Position-aware parsing imports
+use crate::span::dummy_spanned;
 
 fn reserved_check(ident: &str) -> bool {
     let rs = [
@@ -21,329 +23,6 @@ fn reserved_check(ident: &str) -> bool {
         "succ", "pred", "iszero", "case", "fix", "of", "type", "Unit", "Bool", "Nat", "Self",
     ];
     rs.iter().any(|s| *s == ident)
-}
-
-impl Term {
-    fn subst_name(&self, zero_name: &str) -> Term {
-        fn walk(t: &Term, z: &str, c: usize) -> Term {
-            match t {
-                Term::Var(x) => Term::Var(*x),
-                Term::TmpVar(s) => {
-                    if z == *s {
-                        Term::Var(c)
-                    } else {
-                        t.clone()
-                    }
-                }
-                Term::Abs(ty, t1) => Term::Abs(ty.clone(), Box::new(walk(t1, z, c + 1))),
-                Term::App(t1, t2) => Term::App(Box::new(walk(t1, z, c)), Box::new(walk(t2, z, c))),
-                Term::Unit => Term::Unit,
-                Term::True => Term::True,
-                Term::False => Term::False,
-                Term::Zero => Term::Zero,
-                Term::Succ(t1) => Term::Succ(Box::new(walk(t1, z, c))),
-                Term::Pred(t1) => Term::Pred(Box::new(walk(t1, z, c))),
-                Term::IsZero(t1) => Term::IsZero(Box::new(walk(t1, z, c))),
-                Term::Record(fields) => {
-                    let fields = fields
-                        .iter()
-                        .map(|field| Field {
-                            label: field.label.clone(),
-                            term: walk(&field.term, z, c),
-                        })
-                        .collect();
-                    Term::Record(fields)
-                }
-                Term::Projection(t, label) => {
-                    Term::Projection(Box::new(walk(t, z, c)), label.clone())
-                }
-                Term::If(t1, t2, t3) => Term::If(
-                    Box::new(walk(t1, z, c)),
-                    Box::new(walk(t2, z, c)),
-                    Box::new(walk(t3, z, c)),
-                ),
-                Term::Let(t1, t2) => {
-                    let t1 = walk(t1, z, c);
-                    let t2 = walk(t2, z, c + 1);
-                    Term::Let(Box::new(t1), Box::new(t2))
-                }
-                Term::Plet(p, t1, t2) => {
-                    let n = p.len();
-                    let t1 = walk(t1, z, c + n);
-                    let t2 = walk(t2, z, c + n);
-                    Term::Plet(p.clone(), Box::new(t1), Box::new(t2))
-                }
-                Term::Tagging(_) => t.clone(),
-                Term::Case(t, bs) => Term::Case(
-                    Box::new(walk(t, z, c)),
-                    bs.iter()
-                        .map(|b| Arm {
-                            ptag: b.ptag.clone(),
-                            term: walk(&b.term, z, c + b.ptag.len()),
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-                Term::Fix(t1) => Term::Fix(Box::new(walk(t1, z, c))),
-            }
-        }
-        walk(self, zero_name, 0)
-    }
-    fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Term {
-        // todo: generalize to above?
-        match self {
-            Term::Var(_) => self.clone(),
-            Term::TmpVar(_) => self.clone(),
-            Term::Abs(ty, t1) => Term::Abs(
-                ty.subst_name(type_name, ty2),
-                Box::new(t1.subst_type_name(type_name, ty2)),
-            ),
-            Term::Unit => Term::Unit,
-            Term::True => Term::True,
-            Term::False => Term::False,
-            Term::Zero => Term::Zero,
-            Term::Succ(t1) => Term::Succ(Box::new(t1.subst_type_name(type_name, ty2))),
-            Term::Pred(t1) => Term::Pred(Box::new(t1.subst_type_name(type_name, ty2))),
-            Term::IsZero(t1) => Term::IsZero(Box::new(t1.subst_type_name(type_name, ty2))),
-            Term::App(t1, t2) => Term::App(
-                Box::new(t1.subst_type_name(type_name, ty2)),
-                Box::new(t2.subst_type_name(type_name, ty2)),
-            ),
-            Term::Record(fields) => Term::Record(
-                fields
-                    .iter()
-                    .map(|field| Field {
-                        label: field.label.clone(),
-                        term: field.term.subst_type_name(type_name, ty2),
-                    })
-                    .collect(),
-            ),
-            Term::Projection(t, label) => {
-                Term::Projection(Box::new(t.subst_type_name(type_name, ty2)), label.clone())
-            }
-            Term::If(t1, t2, t3) => Term::If(
-                Box::new(t1.subst_type_name(type_name, ty2)),
-                Box::new(t2.subst_type_name(type_name, ty2)),
-                Box::new(t3.subst_type_name(type_name, ty2)),
-            ),
-            Term::Let(t1, t2) => {
-                let t1 = t1.subst_type_name(type_name, ty2);
-                let t2 = t2.subst_type_name(type_name, ty2);
-                Term::Let(Box::new(t1), Box::new(t2))
-            }
-            Term::Plet(p, t1, t2) => {
-                let p = p.subst_type_name(type_name, ty2);
-                let t1 = t1.subst_type_name(type_name, ty2);
-                let t2 = t2.subst_type_name(type_name, ty2);
-                Term::Plet(p, Box::new(t1), Box::new(t2))
-            }
-            Term::Tagging(tag) => Term::Tagging(Tag {
-                ty: tag.ty.subst_name(type_name, ty2),
-                label: tag.label.clone(),
-            }),
-            Term::Case(t, bs) => Term::Case(
-                Box::new(t.subst_type_name(type_name, ty2)),
-                bs.iter()
-                    .map(|b| Arm {
-                        ptag: b.ptag.subst_type_name(type_name, ty2),
-                        term: b.term.subst_type_name(type_name, ty2),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Term::Fix(t1) => Term::Fix(Box::new(t1.subst_type_name(type_name, ty2))),
-        }
-    }
-    fn subst_ptag(&self, ptag: &PTmpTag, offset: usize) -> Result<(Term, PTmpTag, usize), &str> {
-        let t_renamed = ptag.nargs.iter().fold(self.clone(), |acc, arg| {
-            acc.shift(1)
-                .expect("plus shift does not fail")
-                .subst_name(arg)
-        });
-        let args_renamed = (0..ptag.nargs.len())
-            .rev()
-            .map(|i| (i + offset).to_string())
-            .collect();
-        let ptag_renamed = PTmpTag {
-            ty: ptag.ty.clone(),
-            label: ptag.label.clone(),
-            nargs: args_renamed,
-        };
-        Ok((t_renamed, ptag_renamed, ptag.nargs.len()))
-    }
-    fn subst_label(&self, from: &str, to: &str) -> Term {
-        match &self {
-            Term::Record(fs) => Term::Record(
-                fs.iter()
-                    .map(|f| Field {
-                        label: if f.label == from {
-                            to.to_string()
-                        } else {
-                            f.label.clone()
-                        },
-                        term: f.term.subst_label(from, to),
-                    })
-                    .collect(),
-            ),
-            _ => self.clone(),
-        }
-    }
-    fn subst_pat(
-        &self,
-        t1: &Term,
-        p: &Pattern,
-        offset: usize,
-    ) -> Result<(Term, Term, Pattern, usize), &str> {
-        match p {
-            Pattern::Var(name, ty) => {
-                let t = self.subst_name(name.as_str());
-                let p = Pattern::Var(offset.to_string(), ty.clone());
-                Ok((t, t1.clone(), p, 1))
-            }
-            Pattern::Record(pfs) => {
-                let mut n = pfs.iter().fold(0, |acc, pf| {
-                    acc + pf.pat.len()
-                        + if matches!(pf.pat, Pattern::Var(_, _)) {
-                            0
-                        } else {
-                            1
-                        }
-                });
-                // inside patterns
-                let (t_, t1_, pfs_r) = pfs.iter().enumerate().try_rfold(
-                    (self.clone(), t1.clone(), vec![]),
-                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
-                        Pattern::Var(label, ty) => {
-                            acc_pfs.push(PatField {
-                                label,
-                                pat: Pattern::Var((offset + i).to_string(), ty),
-                            });
-                            Ok((acc_t, acc_t1, acc_pfs))
-                        }
-                        _ => {
-                            let len = pf.pat.len();
-                            n -= len;
-                            let (acc_t_, acc_t1_, pi, ni) = acc_t
-                                .subst_pat(&acc_t1, &pf.pat, offset + n)
-                                .map_err(|_| "internal error: subst_pat")?;
-                            if ni != len {
-                                return Err("internal error: len check failed");
-                            }
-                            acc_pfs.push(PatField {
-                                label: pf.label.clone(),
-                                pat: pi,
-                            });
-                            Ok((acc_t_, acc_t1_, acc_pfs))
-                        }
-                    },
-                )?;
-                // 0..n patterns
-                let (t_, t1_, pfs_r) = pfs_r.iter().rev().enumerate().rfold(
-                    (t_, t1_, vec![]),
-                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
-                        Pattern::Var(name, _) => {
-                            acc_pfs.push(PatField {
-                                label: i.to_string(),
-                                pat: pf.pat.clone(),
-                            });
-                            (
-                                acc_t
-                                    .subst_name(name.as_str())
-                                    .shift(1)
-                                    .expect("plus shift does not fail"),
-                                acc_t1.subst_label(&pf.label, i.to_string().as_str()),
-                                acc_pfs,
-                            )
-                        }
-                        _ => {
-                            acc_pfs.push(PatField {
-                                label: i.to_string(),
-                                pat: pf.pat.clone(),
-                            });
-                            (
-                                acc_t
-                                    .subst_name(&pf.label)
-                                    .shift(1)
-                                    .expect("plus shift does not fail"),
-                                acc_t1.subst_label(&pf.label, i.to_string().as_str()),
-                                acc_pfs,
-                            )
-                        }
-                    },
-                );
-                let pfs_ = pfs_r.iter().rev().cloned().collect();
-
-                Ok((t_, t1_, Pattern::Record(pfs_), n))
-            }
-            Pattern::TmpTagging(pttag) => {
-                let (t, ptag, n) = self.subst_ptag(pttag, offset)?;
-                Ok((t, t1.clone(), Pattern::TmpTagging(ptag), n))
-            }
-        }
-    }
-}
-
-impl Type {
-    fn subst_name(&self, type_name: &str, ty2: &Type) -> Type {
-        match self {
-            Type::TyVar(s) => {
-                if type_name == s {
-                    ty2.clone()
-                } else {
-                    self.clone()
-                }
-            }
-            Type::TyRecord(tyfs) => Type::TyRecord(
-                tyfs.iter()
-                    .map(|tyf| TyField {
-                        label: tyf.label.clone(),
-                        ty: tyf.ty.subst_name(type_name, ty2),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Type::TyTagging(tyfs) => Type::TyTagging(
-                tyfs.iter()
-                    .map(|tyf| TyField {
-                        label: tyf.label.clone(),
-                        ty: tyf.ty.subst_name(type_name, ty2),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Type::Arr(ty1, ty2_) => Type::Arr(
-                Box::new(ty1.subst_name(type_name, ty2)),
-                Box::new(ty2_.subst_name(type_name, ty2)),
-            ),
-            Type::Nat => Type::Nat,
-            Type::Bool => Type::Bool,
-            Type::Unit => Type::Unit,
-            Type::TySelf => Type::TySelf,
-        }
-    }
-}
-
-impl PTmpTag {
-    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> PTmpTag {
-        PTmpTag {
-            ty: self.ty.subst_name(type_name, ty2),
-            label: self.label.clone(),
-            nargs: self.nargs.clone(),
-        }
-    }
-}
-
-impl Pattern {
-    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Pattern {
-        match self {
-            Pattern::Var(label, ty) => Pattern::Var(label.clone(), ty.subst_name(type_name, ty2)),
-            Pattern::Record(pfs) => Pattern::Record(
-                pfs.iter()
-                    .map(|pf| PatField {
-                        label: pf.label.clone(),
-                        pat: pf.pat.subst_type_name(type_name, ty2),
-                    })
-                    .collect(),
-            ),
-            Pattern::TmpTagging(ptag) => Pattern::TmpTagging(ptag.subst_type_name(type_name, ty2)),
-        }
-    }
 }
 
 /// <ident> ::= <ident> (alphabet|digit) | alphabet
@@ -421,7 +100,7 @@ fn parse_tyfieldseq(i: &str) -> IResult<&str, Vec<TyField>> {
         .enumerate()
         .map(|(idx, (label, ty))| TyField {
             label: label.unwrap_or(idx.to_string()),
-            ty,
+            ty: dummy_spanned(ty),
         })
         .collect();
     Ok((i, fields))
@@ -492,7 +171,7 @@ fn parse_typrod(i: &str) -> IResult<&str, Type> {
                     .enumerate()
                     .map(|(idx, ty)| TyField {
                         label: idx.to_string(),
-                        ty,
+                        ty: dummy_spanned(ty),
                     })
                     .collect::<Vec<_>>(),
             ),
@@ -515,7 +194,10 @@ fn parse_tyarr(i: &str) -> IResult<&str, Type> {
         .rev()
         .fold(None, |acc, ty| match acc {
             None => Some(ty),
-            Some(acc) => Some(Type::Arr(Box::new(ty), Box::new(acc))),
+            Some(acc) => Some(Type::Arr(
+                Box::new(dummy_spanned(ty)),
+                Box::new(dummy_spanned(acc)),
+            )),
         })
         .expect("expected Some because of once");
     Ok((i, res))
@@ -526,9 +208,18 @@ fn parse_tyvariant(i: &str) -> IResult<&str, TyField> {
     let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
     let (i, args) = many0(preceded(multispace0, parse_tyarr)).parse(i)?;
     let ty = args.iter().fold(Type::TySelf, |acc, ty| {
-        Type::Arr(Box::new(ty.clone()), Box::new(acc))
+        Type::Arr(
+            Box::new(dummy_spanned(ty.clone())),
+            Box::new(dummy_spanned(acc)),
+        )
     });
-    Ok((i, TyField { label, ty }))
+    Ok((
+        i,
+        TyField {
+            label,
+            ty: dummy_spanned(ty),
+        },
+    ))
 }
 fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
     let (i, _) = preceded(multispace0, tag("+")).parse(i)?;
@@ -537,7 +228,7 @@ fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
 /// <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
 fn parse_tysum(i: &str) -> IResult<&str, Type> {
     let (i, tyf1) = parse_tyvariant.parse(i)?;
-    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
+    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty.v {
         many0(parse_tysumsub).parse(i)?
     } else {
         many1(parse_tysumsub).parse(i)?
@@ -687,14 +378,14 @@ fn parse_var(i: &str) -> IResult<&str, Term> {
 fn parse_succ(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, parse_reserved("succ")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::Succ(Box::new(t))))
+    Ok((i, Term::Succ(Box::new(dummy_spanned(t)))))
 }
 
 /// <pred> ::= "pred" <term>
 fn parse_pred(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, parse_reserved("pred")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::Pred(Box::new(t))))
+    Ok((i, Term::Pred(Box::new(dummy_spanned(t)))))
 }
 
 fn parse_reserved(ident: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
@@ -715,7 +406,7 @@ fn parse_reserved(ident: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
 fn parse_iszero(i: &str) -> IResult<&str, Term> {
     let (i, _) = parse_reserved("iszero").parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::IsZero(Box::new(t))))
+    Ok((i, Term::IsZero(Box::new(dummy_spanned(t)))))
 }
 
 /// <tagging> ::= <ty> ":::" <labelorindex>
@@ -756,7 +447,7 @@ fn parse_fieldseq(i: &str) -> IResult<&str, Vec<Field>> {
         .enumerate()
         .map(|(idx, (label, term))| Field {
             label: label.unwrap_or(idx.to_string()),
-            term,
+            term: dummy_spanned(term),
         })
         .collect();
     Ok((i, fields))
@@ -786,7 +477,11 @@ fn parse_plet(i: &str) -> IResult<&str, Term> {
     })?;
     Ok((
         i,
-        Term::Plet(p_renamed, Box::new(t1_renamed), Box::new(t2_renamed)),
+        Term::Plet(
+            p_renamed,
+            Box::new(dummy_spanned(t1_renamed)),
+            Box::new(dummy_spanned(t2_renamed)),
+        ),
     ))
 }
 
@@ -799,7 +494,13 @@ fn parse_let(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
     let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
     let renamed = t2.subst_name(name.as_str());
-    Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
+    Ok((
+        i,
+        Term::Let(
+            Box::new(dummy_spanned(t1)),
+            Box::new(dummy_spanned(renamed)),
+        ),
+    ))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
@@ -809,7 +510,14 @@ fn parse_if(i: &str) -> IResult<&str, Term> {
     let (i, t2) = preceded(parse_reserved("then"), parse_term).parse(i)?;
     let (i, _) = multispace0(i)?;
     let (i, t3) = preceded(parse_reserved("else"), parse_term).parse(i)?;
-    Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
+    Ok((
+        i,
+        Term::If(
+            Box::new(dummy_spanned(t1)),
+            Box::new(dummy_spanned(t2)),
+            Box::new(dummy_spanned(t3)),
+        ),
+    ))
 }
 
 fn parse_arm(i: &str) -> IResult<&str, Arm> {
@@ -829,7 +537,7 @@ fn parse_arm(i: &str) -> IResult<&str, Arm> {
     Ok((
         i,
         Arm {
-            term: t_renamed,
+            term: dummy_spanned(t_renamed),
             ptag: ptag_renamed,
         },
     ))
@@ -845,7 +553,7 @@ fn parse_case(i: &str) -> IResult<&str, Term> {
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
     let (i, _) = preceded(multispace0, parse_reserved("of")).parse(i)?;
     let (i, arms) = preceded(multispace0, parse_arms).parse(i)?;
-    Ok((i, Term::Case(Box::new(t), arms)))
+    Ok((i, Term::Case(Box::new(dummy_spanned(t)), arms)))
 }
 
 /// <lettype> ::= "type" <ident> "=" <type> "in" <term>
@@ -864,7 +572,7 @@ fn parse_lettype(i: &str) -> IResult<&str, Term> {
 fn parse_fix(i: &str) -> IResult<&str, Term> {
     let (i, _) = preceded(multispace0, parse_reserved("fix")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::Fix(Box::new(t))))
+    Ok((i, Term::Fix(Box::new(dummy_spanned(t)))))
 }
 
 /// <letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
@@ -882,8 +590,10 @@ fn parse_letrec(i: &str) -> IResult<&str, Term> {
     Ok((
         i,
         Term::Let(
-            Box::new(Term::Fix(Box::new(Term::Abs(ty, Box::new(t1_renamed))))),
-            Box::new(t2_renamed),
+            Box::new(dummy_spanned(Term::Fix(Box::new(dummy_spanned(
+                Term::Abs(ty, Box::new(dummy_spanned(t1_renamed))),
+            ))))),
+            Box::new(dummy_spanned(t2_renamed)),
         ),
     ))
 }
@@ -899,9 +609,9 @@ fn parse_abs(i: &str) -> IResult<&str, Term> {
     match name {
         Some(name) => {
             let renamed = t.subst_name(&name);
-            Ok((i, Term::Abs(ty, Box::new(renamed))))
+            Ok((i, Term::Abs(ty, Box::new(dummy_spanned(renamed)))))
         }
-        None => Ok((i, Term::Abs(ty, Box::new(t)))),
+        None => Ok((i, Term::Abs(ty, Box::new(dummy_spanned(t))))),
     }
 }
 
@@ -952,9 +662,9 @@ fn parse_projection(i: &str) -> IResult<&str, String> {
 fn parse_postfix(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_atom.parse(i)?;
     let (i, rest) = many0(parse_projection).parse(i)?;
-    let t = rest
-        .into_iter()
-        .fold(first, |acc, label| Term::Projection(Box::new(acc), label));
+    let t = rest.into_iter().fold(first, |acc, label| {
+        Term::Projection(Box::new(dummy_spanned(acc)), label)
+    });
     Ok((i, t))
 }
 
@@ -962,9 +672,9 @@ fn parse_postfix(i: &str) -> IResult<&str, Term> {
 fn parse_app(i: &str) -> IResult<&str, Term> {
     let (i, first) = parse_postfix.parse(i)?;
     let (i, rest) = many0(parse_postfix).parse(i)?;
-    let t = rest
-        .into_iter()
-        .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
+    let t = rest.into_iter().fold(first, |acc, t| {
+        Term::App(Box::new(dummy_spanned(acc)), Box::new(dummy_spanned(t)))
+    });
     Ok((i, t))
 }
 
@@ -974,8 +684,11 @@ fn parse_seq(i: &str) -> IResult<&str, Term> {
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
     let t = rest.into_iter().fold(first, |acc, t| {
         Term::App(
-            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))),
-            Box::new(acc),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Unit,
+                Box::new(dummy_spanned(t.shift(1).unwrap_or(t))),
+            ))),
+            Box::new(dummy_spanned(acc)),
         )
     });
     Ok((i, t))
@@ -1008,98 +721,135 @@ use rstest::rstest;
 
 #[rstest]
 #[case("1", Some(Term::Var(1)))]
-#[case(r"\:Unit.unit ", Some(Term::Abs(Type::Unit, Box::new(Term::Unit))))]
+#[case(
+    r"\:Unit.unit ",
+    Some(Term::Abs(Type::Unit, Box::new(dummy_spanned(Term::Unit))))
+)]
 #[case(
     r" unit ; true ",
     Some(Term::App(
-        Box::new(Term::Abs(Type::Unit, Box::new(Term::True))),
-        Box::new(Term::Unit)
+        Box::new(dummy_spanned(Term::Abs(Type::Unit, Box::new(dummy_spanned(Term::True))))),
+        Box::new(dummy_spanned(Term::Unit))
     ))
 )]
 #[case(
     r"(\:Bool.unit) false; unit; \:Unit.true",
     Some(Term::App(
-        Box::new(Term::Abs(
+        Box::new(dummy_spanned(Term::Abs(
             Type::Unit,
-            Box::new(Term::App(
-                Box::new(Term::Abs(
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::Abs(
                     Type::Unit,
-                    Box::new(Term::Abs(Type::Unit, Box::new(Term::True)))
-                )),
-                Box::new(Term::Unit)
-            ))
-        )),
-        Box::new(Term::App(
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Unit))),
-            Box::new(Term::False)
-        ))
+                    Box::new(dummy_spanned(Term::Abs(
+                        Type::Unit,
+                        Box::new(dummy_spanned(Term::True))
+                    )))
+                ))),
+                Box::new(dummy_spanned(Term::Unit))
+            )))
+        ))),
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Unit))))),
+            Box::new(dummy_spanned(Term::False))
+        )))
     ))
 )]
 #[case(
     r"   ( \ : Bool . 0 )   ",
-    Some(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+    Some(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Var(0)))))
 )]
 #[case(
     r"( \ :Bool. 0) 1",
     Some(Term::App(
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-        Box::new(Term::Var(1))
+        Box::new(dummy_spanned(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Var(0)))))),
+        Box::new(dummy_spanned(Term::Var(1)))
     ))
 )]
 #[case(
     r"(\ : Bool.0) ( \   : Bool . 0 )",
     Some(Term::App(
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+        Box::new(dummy_spanned(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Var(0)))))),
+        Box::new(dummy_spanned(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Var(0))))))
     ))
 )]
 #[case(
     r"(\:Bool.0) (\:Bool.0) (\:Bool.0)",
     Some(Term::App(
-        Box::new(Term::App(
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-        )),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            ))),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            )))
+        ))),
+        Box::new(dummy_spanned(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Var(0))))))
     ))
 )]
 #[case(
     r"\:Bool.1\:Bool.0",
     Some(Term::Abs(
         Type::Bool,
-        Box::new(Term::App(
-            Box::new(Term::Var(1)),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-        ))
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::Var(1))),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            )))
+        )))
     ))
 )]
 #[case(r" true", Some(Term::True))]
 #[case(r" false ", Some(Term::False))]
 #[case(
     r"if true then false else true",
-    Some(Term::If(Box::new(Term::True), Box::new(Term::False), Box::new(Term::True)))
+    Some(Term::If(
+        Box::new(dummy_spanned(Term::True)),
+        Box::new(dummy_spanned(Term::False)),
+        Box::new(dummy_spanned(Term::True))
+    ))
 )]
 #[case(
     r"if true then \:Bool.\:Bool.0 else \:Bool.\:Bool.1",
     Some(Term::If(
-        Box::new(Term::True),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))))),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(1))))))
+        Box::new(dummy_spanned(Term::True)),
+        Box::new(dummy_spanned(Term::Abs(
+            Type::Bool,
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            )))
+        ))),
+        Box::new(dummy_spanned(Term::Abs(
+            Type::Bool,
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(1)))
+            )))
+        )))
     ))
 )]
 // \f:Bool->Bool.\x:Bool.if f x then false else true
 #[case(
     r"\:Bool->Bool.\:Bool.if 1 0 then false else true",
     Some(Term::Abs(
-        Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)),
-        Box::new(Term::Abs(
+        Type::Arr(
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Bool))
+        ),
+        Box::new(dummy_spanned(Term::Abs(
             Type::Bool,
-            Box::new(Term::If(
-                Box::new(Term::App(Box::new(Term::Var(1)), Box::new(Term::Var(0)))),
-                Box::new(Term::False),
-                Box::new(Term::True)
-            )),
-        ))
+            Box::new(dummy_spanned(Term::If(
+                Box::new(dummy_spanned(Term::App(
+                    Box::new(dummy_spanned(Term::Var(1))),
+                    Box::new(dummy_spanned(Term::Var(0)))
+                ))),
+                Box::new(dummy_spanned(Term::False)),
+                Box::new(dummy_spanned(Term::True))
+            ))),
+        )))
     ))
 )]
 // realbool = \b:Bool->Bool->Bool.b true false
@@ -1107,13 +857,19 @@ use rstest::rstest;
     r"\:Bool->Bool->Bool.0 true false",
     Some(Term::Abs(
         Type::Arr(
-            Box::new(Type::Bool),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ))),
         ),
-        Box::new(Term::App(
-            Box::new(Term::App(Box::new(Term::Var(0)), Box::new(Term::True))),
-            Box::new(Term::False)
-        ))
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::Var(0))),
+                Box::new(dummy_spanned(Term::True))
+            ))),
+            Box::new(dummy_spanned(Term::False))
+        )))
     ))
 )]
 // \a:(Bool->Bool)->Bool.a (\b:Bool.b)
@@ -1121,26 +877,38 @@ use rstest::rstest;
     r" \ : ( Bool -> Bool ) -> Bool . 0 ( \ : Bool . 0 )",
     Some(Term::Abs(
         Type::Arr(
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-            Box::new(Type::Bool)
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ))),
+            Box::new(dummy_spanned(Type::Bool))
         ),
-        Box::new(Term::App(
-            Box::new(Term::Var(0)),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-        ))
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::Var(0))),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            )))
+        )))
     ))
 )]
 #[case(
     r"\:(Bool->Bool->Bool)->Bool->Bool.0",
     Some(Term::Abs(
         Type::Arr(
-            Box::new(Type::Arr(
-                Box::new(Type::Bool),
-                Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
-            )),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Arr(
+                    Box::new(dummy_spanned(Type::Bool)),
+                    Box::new(dummy_spanned(Type::Bool))
+                )))
+            ))),
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            )))
         ),
-        Box::new(Term::Var(0))
+        Box::new(dummy_spanned(Term::Var(0)))
     ))
 )]
 #[case(
@@ -1150,73 +918,94 @@ case <Bool->Self, Unit->Self>:::0 true of
   | <Bool->Self, Unit->Self>:::1 u => false
     ",
     Some(Term::Case(
-        Box::new(Term::App(
-            Box::new(Term::Tagging(Tag {
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::Tagging(Tag {
                 ty: Type::TyTagging(
                     [
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Bool)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Unit)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                     ]
                     .to_vec(),
                 ),
                 label: "0".to_string(),
-            })),
-            Box::new(Term::True),
-        )),
+            }))),
+            Box::new(dummy_spanned(Term::True)),
+        ))),
         vec![
             Arm {
                 ptag: PTmpTag {
                     ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Bool)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Unit)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                     ]),
                     label: "0".to_string(),
                     nargs: vec!["0".to_string()],
                 },
-                term: Term::Var(0),
+                term: dummy_spanned(Term::Var(0)),
             },
             Arm {
                 ptag: PTmpTag {
                     ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Bool)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Unit)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                     ]),
                     label: "1".to_string(),
                     nargs: vec!["0".to_string()],
                 },
-                term: Term::False,
+                term: dummy_spanned(Term::False),
             },
         ],
     ))
 )]
 #[case(
     r"let x = true in x",
-    Some(Term::Let(Box::new(Term::True), Box::new(Term::Var(0))))
+    Some(Term::Let(
+        Box::new(dummy_spanned(Term::True)),
+        Box::new(dummy_spanned(Term::Var(0)))
+    ))
 )]
 #[case(
     r"let x:Bool = true in x",
     Some(Term::Plet(
         Pattern::Var("0".to_string(), Type::Bool),
-        Box::new(Term::True),
-        Box::new(Term::Var(0))
+        Box::new(dummy_spanned(Term::True)),
+        Box::new(dummy_spanned(Term::Var(0)))
     ))
 )]
 #[case(r"\", None)]

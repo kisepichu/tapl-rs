@@ -1,5 +1,6 @@
 mod eval;
 mod parser;
+mod span;
 mod syntax;
 mod typing;
 

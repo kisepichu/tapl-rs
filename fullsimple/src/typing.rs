@@ -2,12 +2,15 @@ use std::iter::once;
 
 use rstest::rstest;
 
-use crate::syntax::{
-    context::Context,
-    pattern::{PTmpTag, Pattern},
-    pattype::PatType,
-    term::{Tag, Term},
-    r#type::{TyField, Type},
+use crate::{
+    span::dummy_spanned,
+    syntax::{
+        context::Context,
+        pattern::{PTmpTag, Pattern},
+        pattype::PatType,
+        term::{Tag, Term},
+        r#type::{TyField, Type},
+    },
 };
 
 #[allow(dead_code)]
@@ -29,32 +32,35 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         )),
         Term::Abs(ty1, t2) => {
             let ctx_ = ctx.clone().shift_and_push0(ty1.clone());
-            let ty2 = type_of(&ctx_, t2)?;
-            Ok(Type::Arr(Box::new(ty1.clone()), Box::new(ty2.clone())))
+            let ty2 = type_of(&ctx_, &t2.v)?;
+            Ok(Type::Arr(
+                Box::new(dummy_spanned(ty1.clone())),
+                Box::new(dummy_spanned(ty2.clone())),
+            ))
         }
         Term::App(t1, t2) => {
-            let ty1 = type_of(ctx, t1)?;
-            let ty2 = type_of(ctx, t2)?;
+            let ty1 = type_of(ctx, &t1.v)?;
+            let ty2 = type_of(ctx, &t2.v)?;
             match ty1 {
                 Type::Arr(ty11, ty12) => {
-                    if *ty11 == ty2 {
-                        Ok(*ty12.clone())
+                    if ty11.v == ty2 {
+                        Ok(ty12.v.clone())
                     } else {
-                        let t1 = t1.to_string();
-                        let t1 = if t1.len() <= 20 {
-                            t1
+                        let t1_str = t1.v.to_string();
+                        let t1_str = if t1_str.len() <= 20 {
+                            t1_str
                         } else {
-                            t1[..20].to_string() + "..."
+                            t1_str[..20].to_string() + "..."
                         };
                         Err(format!(
                             "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
-                            t, t1, ty11, t2, ty2
+                            t, t1_str, ty11.v, t2.v, ty2
                         ))
                     }
                 }
                 _ => Err(format!(
                     "type check failed: {}\n  expected arrow type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 )),
             }
         }
@@ -63,35 +69,35 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::False => Ok(Type::Bool),
         Term::Zero => Ok(Type::Nat),
         Term::Succ(t1) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             if ty1 == Type::Nat {
                 Ok(Type::Nat)
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected Nat type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
             }
         }
         Term::Pred(t1) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             if ty1 == Type::Nat {
                 Ok(Type::Nat)
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected Nat type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
             }
         }
         Term::IsZero(t1) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             if ty1 == Type::Nat {
                 Ok(Type::Bool)
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected Nat type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
             }
         }
@@ -99,22 +105,22 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             let tyfields = fields
                 .iter()
                 .map(|field| {
-                    let ty = type_of(ctx, &field.term)?;
+                    let ty = type_of(ctx, &field.term.v)?;
                     Ok(TyField {
                         label: field.label.clone(),
-                        ty,
+                        ty: dummy_spanned(ty),
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             Ok(Type::TyRecord(tyfields))
         }
         Term::Projection(t1, label) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             if let Type::TyRecord(fields) = ty1.clone() {
                 fields
                     .iter()
                     .find(|field| field.label == *label)
-                    .map(|field| field.ty.clone())
+                    .map(|field| field.ty.v.clone())
                     .ok_or_else(|| {
                         format!(
                             "type check failed: {}\n  field {} not found in record type {}",
@@ -126,14 +132,14 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 
                 Err(format!(
                     "type check failed: {}\n  expected record type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
             }
         }
         Term::If(t1, t2, t3) => {
-            let ty1 = type_of(ctx, t1)?;
-            let ty2 = type_of(ctx, t2)?;
-            let ty3 = type_of(ctx, t3)?;
+            let ty1 = type_of(ctx, &t1.v)?;
+            let ty2 = type_of(ctx, &t2.v)?;
+            let ty3 = type_of(ctx, &t3.v)?;
             if ty1 == Type::Bool && ty2 == ty3 {
                 Ok(ty2)
             } else if ty2 != ty3 {
@@ -144,17 +150,17 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected boolean type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
             }
         }
         Term::Let(t1, t2) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             let ctx_ = ctx.clone().shift_and_push0(ty1);
-            type_of(&ctx_, t2)
+            type_of(&ctx_, &t2.v)
         }
         Term::Plet(p, t1, t2) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             let pty = pat_type_of(ctx, p)?;
             let ctx_ = pty.context.clone();
             if pty.ty != ty1 {
@@ -163,7 +169,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                     t, pty.ty, ty1
                 ));
             }
-            type_of(&ctx_, t2)
+            type_of(&ctx_, &t2.v)
         }
         Term::Tagging(Tag { ty, label }) => {
             if let Type::TyTagging(tyfields) = ty {
@@ -181,22 +187,22 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                     match ty {
                         Type::TySelf => replace.clone(),
                         Type::Arr(t1, t2) => Type::Arr(
-                            Box::new(replace_self(t1, replace)),
-                            Box::new(replace_self(t2, replace)),
+                            Box::new(dummy_spanned(replace_self(&t1.v, replace))),
+                            Box::new(dummy_spanned(replace_self(&t2.v, replace))),
                         ),
                         Type::TyRecord(fields) => Type::TyRecord(
                             fields
                                 .iter()
                                 .map(|f| TyField {
                                     label: f.label.clone(),
-                                    ty: replace_self(&f.ty, replace),
+                                    ty: dummy_spanned(replace_self(&f.ty.v, replace)),
                                 })
                                 .collect(),
                         ),
                         _ => ty.clone(),
                     }
                 }
-                Ok(replace_self(&ty_, ty))
+                Ok(replace_self(&ty_.v, ty))
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected tagging type, but found {}",
@@ -205,7 +211,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             }
         }
         Term::Case(t, arms) => {
-            let tyt = type_of(ctx, t)?;
+            let tyt = type_of(ctx, &t.v)?;
             match tyt.clone() {
                 Type::TyTagging(tyfields) => {
                     // none when arms.len() == 0
@@ -228,10 +234,10 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                             ));
                         }
                         let ctx_ = ptyarm.context.clone();
-                        let tyarm = type_of(&ctx_, &arm.term)?;
+                        let tyarm = type_of(&ctx_, &arm.term.v)?;
 
                         if t_.is_none() {
-                            t_ = Some((arm.term.clone(), tyarm));
+                            t_ = Some((arm.term.v.clone(), tyarm));
                         } else if let Some((_, tyt_)) = &t_ {
                             if tyt_ != &tyarm {
                                 return Err(format!(
@@ -245,7 +251,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                                         )
                                     },
                                     t_.clone().expect("in let Some block").1,
-                                    arm.term,
+                                    arm.term.v,
                                     tyarm
                                 ));
                             }
@@ -260,22 +266,22 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             }
         }
         Term::Fix(t1) => {
-            let ty1 = type_of(ctx, t1)?;
+            let ty1 = type_of(ctx, &t1.v)?;
             if let Type::Arr(ty11, ty12) = ty1 {
-                if *ty11 == *ty12 {
-                    Ok(*ty11)
+                if ty11.v == ty12.v {
+                    Ok(ty11.v.clone())
                 } else {
                     Err(format!(
                         "type check failed: {}\n  expected arrow type with same input and output types, but found {}: {}",
                         t,
-                        t1,
+                        t1.v,
                         Type::Arr(ty11, ty12)
                     ))
                 }
             } else {
                 Err(format!(
                     "type check failed: {}\n  expected arrow type, but found {}: {}",
-                    t, t1, ty1
+                    t, t1.v, ty1
                 ))
             }
         }
@@ -285,15 +291,15 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 fn expand_self(ty: &Type, tyself: &Type) -> Type {
     match ty {
         Type::Arr(t1, t2) => Type::Arr(
-            Box::new(expand_self(t1, tyself)),
-            Box::new(expand_self(t2, tyself)),
+            Box::new(dummy_spanned(expand_self(&t1.v, tyself))),
+            Box::new(dummy_spanned(expand_self(&t2.v, tyself))),
         ),
         Type::TyRecord(fields) => Type::TyRecord(
             fields
                 .iter()
                 .map(|f| TyField {
                     label: f.label.clone(),
-                    ty: expand_self(&f.ty, tyself),
+                    ty: dummy_spanned(expand_self(&f.ty.v, tyself)),
                 })
                 .collect(),
         ),
@@ -343,7 +349,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                     let pty = pat_type_of(&acc_ctx_inner, &pf.pat)?;
                     acc_tyfs.push(TyField {
                         label: pf.label.clone(),
-                        ty: pty.ty.clone(),
+                        ty: dummy_spanned(pty.ty.clone()),
                     });
                     Ok::<_, String>((
                         acc_tyfs,
@@ -375,7 +381,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                 let ty0 = tyfields
                     .iter()
                     .find(|field| field.label == *label)
-                    .map(|field| field.ty.clone())
+                    .map(|field| field.ty.v.clone())
                     .ok_or_else(|| {
                         format!(
                             "type check failed: {}\n  tag {} not found in tagging type {}",
@@ -391,20 +397,20 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
 
                 fn tyarr_to_vec(ty: Type) -> Vec<Type> {
                     match ty {
-                        Type::Arr(l, r) => once(*l).chain(tyarr_to_vec(*r)).collect(),
+                        Type::Arr(l, r) => once(l.v).chain(tyarr_to_vec(r.v)).collect(),
                         ty => vec![ty],
                     }
                 }
                 let n = nargs.len();
-                let tyargs = tyarr_to_vec(ty0);
+                let tyargs = tyarr_to_vec(ty0.clone());
                 let mut ctx_ = ctx.clone();
                 for (i, _tya) in (0..n).rev().zip(tyargs) {
                     if let Type::Arr(ty1, ty2) = pty.ty {
-                        let ty1_ = expand_self(&ty1, ty);
+                        let ty1_ = expand_self(&ty1.v, ty);
                         let ptyarg = pat_type_of(&ctx_, &Pattern::Var(i.to_string(), ty1_))?;
                         ctx_ = ptyarg.context;
                         pty = PatType {
-                            ty: *ty2.clone(),
+                            ty: ty2.v.clone(),
                             add: pty.add + ptyarg.add,
                             context: ctx_.clone(),
                         };
@@ -446,30 +452,42 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
     Some(Type::TyRecord(vec![
         TyField {
             label: "b".to_string(),
-            ty: Type::Bool,
+            ty: dummy_spanned(Type::Bool),
         },
         TyField {
             label: "1".to_string(),
-            ty: Type::Unit,
+            ty: dummy_spanned(Type::Unit),
         },
     ]))
 )]
 #[case(
     r"\:Bool.0",
-    Some(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
+    Some(Type::Arr(
+        Box::new(dummy_spanned(Type::Bool)),
+        Box::new(dummy_spanned(Type::Bool))
+    ))
 )]
 #[case(
     r"\:Bool.\:Bool.0",
     Some(Type::Arr(
-        Box::new(Type::Bool),
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
+        Box::new(dummy_spanned(Type::Bool)),
+        Box::new(dummy_spanned(Type::Arr(
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Bool))
+        )))
     ))
 )]
 #[case(
     r"\:Bool->Bool.0",
     Some(Type::Arr(
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+        Box::new(dummy_spanned(Type::Arr(
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Bool))
+        ))),
+        Box::new(dummy_spanned(Type::Arr(
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Bool))
+        ))),
     ))
 )]
 #[case(r"if true then false else true", Some(Type::Bool))]
@@ -478,16 +496,22 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
 #[case(
     r"(\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true",
     Some(Type::Arr(
-        Box::new(Type::Bool),
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
+        Box::new(dummy_spanned(Type::Bool)),
+        Box::new(dummy_spanned(Type::Arr(
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Bool))
+        ))),
     ))
 )]
 #[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
 #[case(
     r"(\:(Bool->Bool)->Bool.0) \:Bool->Bool.0 true",
     Some(Type::Arr(
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-        Box::new(Type::Bool)
+        Box::new(dummy_spanned(Type::Arr(
+            Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Bool))
+        ))),
+        Box::new(dummy_spanned(Type::Bool))
     ))
 )]
 #[case(
