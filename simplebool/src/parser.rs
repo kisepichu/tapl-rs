@@ -10,7 +10,7 @@ use nom::{
     character::complete::{alphanumeric1, char, digit1, multispace0},
     combinator::{map, map_res},
     multi::many0,
-    sequence::{delimited, preceded},
+    sequence::preceded,
 };
 use std::iter::once;
 
@@ -34,47 +34,103 @@ mod utils;
 // <tybool> ::= "Bool"
 
 /// <tyencl> ::= "(" <ty> ")"
-fn parse_tyencl(i: Span) -> IResult<Span, Type, ErrorWithPos> {
-    delimited(char('('), parse_ty_space, char(')')).parse(i)
+fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let (i, _) = char('(').parse(i)?;
+    let (i, t) = update_err("type expected", 20, parse_ty_space).parse(i)?;
+    let (i, _) = chmax_err(
+        &t.lasterr,
+        update_err("')' expected", 50, with_pos(char(')'))),
+    )
+    .parse(i)?;
+    Ok((i, t))
+}
+
+/// <tybool> ::= "Bool" | unknown type name for error
+fn parse_tybool(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+
+    // まず alphanumeric1 でタイプ名を取得
+    let (i, type_name) = alphanumeric1(i)?;
+
+    match type_name.fragment() {
+        &"Bool" => Ok((
+            i,
+            Prg {
+                st: Spanned {
+                    v: Type::Bool,
+                    start: start_pos.0,
+                    line: start_pos.1,
+                    column: start_pos.2,
+                },
+                lasterr: None,
+            },
+        )),
+        name => Err(nom::Err::Error(ErrorWithPos {
+            message: format!("Unknown type: {}", name),
+            level: 90,
+            kind: Some(nom::error::ErrorKind::Tag),
+            line: start_pos.1,
+            column: start_pos.2,
+        })),
+    }
 }
 
 /// <tyatom> ::= <tyencl> | <tybool>
-fn parse_tyatom(i: Span) -> IResult<Span, Type, ErrorWithPos> {
-    preceded(
-        multispace0,
-        alt((map(tag("Bool"), |_| Type::Bool), parse_tyencl)),
-    )
-    .parse(i)
+fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    preceded(multispace0, alt((parse_tyencl, parse_tybool))).parse(i)
 }
 
 /// <tyarrsub> ::= "->" <ty>
-fn parse_tyarrsub(i: Span) -> IResult<Span, Type, ErrorWithPos> {
+fn parse_tyarrsub(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
     preceded(multispace0, parse_ty_space).parse(i)
 }
 
 /// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-fn parse_tyarr(i: Span) -> IResult<Span, Type, ErrorWithPos> {
+fn parse_tyarr(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, tyatom) = preceded(multispace0, parse_tyatom).parse(i)?;
     let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
-    let res = once(tyatom)
-        .chain(rest)
+    let start_pos = (tyatom.st.start, tyatom.st.line, tyatom.st.column);
+    let lasterr = tyatom.lasterr.clone();
+
+    let res = once(tyatom.st)
+        .chain(rest.into_iter().map(|t| t.st))
         .rev()
         .fold(None, |acc, ty| match acc {
-            None => Some(ty),
-            Some(acc) => Some(Type::Arr(Box::new(ty), Box::new(acc))),
+            None => Some(ty.v),
+            Some(acc) => Some(Type::Arr(
+                Box::new(ty.clone()),
+                Box::new(Spanned {
+                    v: acc,
+                    start: ty.start,
+                    line: ty.line,
+                    column: ty.column,
+                }),
+            )),
         })
         .expect("expected Some because of once");
-    Ok((i, res))
+
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: res,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr,
+        },
+    ))
 }
 
 /// <ty> ::= <tyarr>
-fn parse_ty(i: Span) -> IResult<Span, Type, ErrorWithPos> {
+fn parse_ty(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     parse_tyarr(i)
 }
 
-fn parse_ty_space(i: Span) -> IResult<Span, Type, ErrorWithPos> {
+fn parse_ty_space(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, t) = parse_ty(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, t))
@@ -137,11 +193,15 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
     let (i, _) = preceded(char(':'), multispace0).parse(i)?;
-    let (i, ty) = parse_ty_space(i)?;
-    let (i, _) = char('.').parse(i)?;
-    let (i, t) = parse_term(i)?;
+    let (i, ty) = update_err("type expected", 20, parse_ty_space).parse(i)?;
+    let (i, _) = chmax_err(
+        &ty.lasterr,
+        update_err("'.' expected", 50, with_pos(char('.'))),
+    )
+    .parse(i)?;
+    let (i, t) = chmax_err(&ty.lasterr, update_err("term expected", 20, parse_term)).parse(i)?;
 
-    let result = Term::Abs(ty, Box::new(t.st));
+    let result = Term::Abs(ty.st.v, Box::new(t.st));
     Ok((
         i,
         Prg {
@@ -151,7 +211,7 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: t.lasterr,
+            lasterr: ty.lasterr.or(t.lasterr),
         },
     ))
 }

@@ -1,10 +1,11 @@
 use std::fmt;
 
+use crate::span::Spanned;
 use rstest::rstest;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Arr(Box<Type>, Box<Type>),
+    Arr(Box<Spanned<Type>>, Box<Spanned<Type>>),
     Bool,
 }
 
@@ -14,9 +15,9 @@ impl fmt::Display for Type {
             match ty {
                 Type::Arr(t1, t2) => {
                     if is_left_arr {
-                        format!("({}->{})", p(t1, true), p(t2, false))
+                        format!("({}->{})", p(&t1.v, true), p(&t2.v, false))
                     } else {
-                        format!("{}->{}", p(t1, true), p(t2, false))
+                        format!("{}->{}", p(&t1.v, true), p(&t2.v, false))
                     }
                 }
                 Type::Bool => "Bool".to_string(),
@@ -26,26 +27,52 @@ impl fmt::Display for Type {
     }
 }
 
+// Helper function for creating spanned types in tests
+#[cfg(test)]
+fn spanned_type(ty: Type) -> Spanned<Type> {
+    Spanned {
+        v: ty,
+        start: 0,
+        line: 1,
+        column: 1,
+    }
+}
+
 #[rstest]
 #[case(Type::Bool, r"Bool")]
-#[case(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)), r"Bool->Bool")]
+#[case(
+    Type::Arr(Box::new(spanned_type(Type::Bool)), Box::new(spanned_type(Type::Bool))),
+    r"Bool->Bool"
+)]
 #[case(
     Type::Arr(
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-        Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::Bool)),
+            Box::new(spanned_type(Type::Bool))
+        ))),
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::Bool)),
+            Box::new(spanned_type(Type::Bool))
+        )))
     ),
     r"(Bool->Bool)->Bool->Bool"
 )]
 #[case(
     Type::Arr(
-        Box::new(Type::Bool),
-        Box::new(Type::Arr(
-            Box::new(Type::Arr(
-                Box::new(Type::Bool),
-                Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-            )),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
-        ))
+        Box::new(spanned_type(Type::Bool)),
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::Bool)),
+                Box::new(spanned_type(Type::Arr(
+                    Box::new(spanned_type(Type::Bool)),
+                    Box::new(spanned_type(Type::Bool))
+                ))),
+            ))),
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::Bool)),
+                Box::new(spanned_type(Type::Bool))
+            )))
+        )))
     ),
     r"Bool->(Bool->Bool->Bool)->Bool->Bool"
 )]
