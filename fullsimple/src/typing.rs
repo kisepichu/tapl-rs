@@ -13,6 +13,33 @@ use crate::{
     },
 };
 
+// Helper function to compare types ignoring position information
+fn types_equal_ignore_pos(ty1: &Type, ty2: &Type) -> bool {
+    match (ty1, ty2) {
+        (Type::Bool, Type::Bool) => true,
+        (Type::Nat, Type::Nat) => true,
+        (Type::Unit, Type::Unit) => true,
+        (Type::TySelf, Type::TySelf) => true,
+        (Type::TyVar(s1), Type::TyVar(s2)) => s1 == s2,
+        (Type::Arr(t1a, t1b), Type::Arr(t2a, t2b)) => {
+            types_equal_ignore_pos(&t1a.v, &t2a.v) && types_equal_ignore_pos(&t1b.v, &t2b.v)
+        }
+        (Type::TyRecord(fields1), Type::TyRecord(fields2)) => {
+            fields1.len() == fields2.len()
+                && fields1.iter().zip(fields2.iter()).all(|(f1, f2)| {
+                    f1.label == f2.label && types_equal_ignore_pos(&f1.ty.v, &f2.ty.v)
+                })
+        }
+        (Type::TyTagging(fields1), Type::TyTagging(fields2)) => {
+            fields1.len() == fields2.len()
+                && fields1.iter().zip(fields2.iter()).all(|(f1, f2)| {
+                    f1.label == f2.label && types_equal_ignore_pos(&f1.ty.v, &f2.ty.v)
+                })
+        }
+        _ => false,
+    }
+}
+
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
@@ -43,7 +70,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             let ty2 = type_of(ctx, &t2.v)?;
             match ty1 {
                 Type::Arr(ty11, ty12) => {
-                    if ty11.v == ty2 {
+                    if types_equal_ignore_pos(&ty11.v, &ty2) {
                         Ok(ty12.v.clone())
                     } else {
                         let t1_str = t1.v.to_string();
@@ -70,7 +97,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Zero => Ok(Type::Nat),
         Term::Succ(t1) => {
             let ty1 = type_of(ctx, &t1.v)?;
-            if ty1 == Type::Nat {
+            if types_equal_ignore_pos(&ty1, &Type::Nat) {
                 Ok(Type::Nat)
             } else {
                 Err(format!(
@@ -81,7 +108,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         }
         Term::Pred(t1) => {
             let ty1 = type_of(ctx, &t1.v)?;
-            if ty1 == Type::Nat {
+            if types_equal_ignore_pos(&ty1, &Type::Nat) {
                 Ok(Type::Nat)
             } else {
                 Err(format!(
@@ -92,7 +119,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         }
         Term::IsZero(t1) => {
             let ty1 = type_of(ctx, &t1.v)?;
-            if ty1 == Type::Nat {
+            if types_equal_ignore_pos(&ty1, &Type::Nat) {
                 Ok(Type::Bool)
             } else {
                 Err(format!(
@@ -140,9 +167,9 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             let ty1 = type_of(ctx, &t1.v)?;
             let ty2 = type_of(ctx, &t2.v)?;
             let ty3 = type_of(ctx, &t3.v)?;
-            if ty1 == Type::Bool && ty2 == ty3 {
+            if types_equal_ignore_pos(&ty1, &Type::Bool) && types_equal_ignore_pos(&ty2, &ty3) {
                 Ok(ty2)
-            } else if ty2 != ty3 {
+            } else if !types_equal_ignore_pos(&ty2, &ty3) {
                 Err(format!(
                     "type check failed: {}\n  arms of conditional have different types:\n  {}, {}",
                     t, ty2, ty3
@@ -163,7 +190,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             let ty1 = type_of(ctx, &t1.v)?;
             let pty = pat_type_of(ctx, p)?;
             let ctx_ = pty.context.clone();
-            if pty.ty != ty1 {
+            if !types_equal_ignore_pos(&pty.ty, &ty1) {
                 return Err(format!(
                     "type check failed: {}\n  pattern type {} does not match term type {}",
                     t, pty.ty, ty1
@@ -227,7 +254,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                                 ));
                             }
                         }
-                        if ptyarm.ty != tyt {
+                        if !types_equal_ignore_pos(&ptyarm.ty, &tyt) {
                             return Err(format!(
                                 "type check failed: {}\n  pattern type {} does not match term type {}",
                                 t, ptyarm.ty, tyt
@@ -239,7 +266,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                         if t_.is_none() {
                             t_ = Some((arm.term.v.clone(), tyarm));
                         } else if let Some((_, tyt_)) = &t_ {
-                            if tyt_ != &tyarm {
+                            if !types_equal_ignore_pos(tyt_, &tyarm) {
                                 return Err(format!(
                                     "type check failed: {}\n  arms of case expression have different types:\n  {}: {},\n  {}: {}",
                                     t,
@@ -268,7 +295,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::Fix(t1) => {
             let ty1 = type_of(ctx, &t1.v)?;
             if let Type::Arr(ty11, ty12) = ty1 {
-                if ty11.v == ty12.v {
+                if types_equal_ignore_pos(&ty11.v, &ty12.v) {
                     Ok(ty11.v.clone())
                 } else {
                     Err(format!(
@@ -421,7 +448,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                         ));
                     }
                 }
-                if pty.ty == Type::TySelf {
+                if types_equal_ignore_pos(&pty.ty, &Type::TySelf) {
                     pty.ty = ty.clone();
                 } else {
                     return Err(format!(
@@ -440,14 +467,61 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
     }
 }
 
-#[rstest]
-#[case(r"unit", Some(Type::Unit))]
-#[case(r"unit;0", None)]
-#[case(r"(\:Bool. ( unit ; 0 ) ) true", Some(Type::Bool))]
-#[case(r"(\:Bool.(unit;unit;0))true", Some(Type::Bool))]
-#[case(r"true", Some(Type::Bool))]
-#[case(r"false", Some(Type::Bool))]
-#[case(
+mod tests {
+    use rstest::rstest;
+
+    #[allow(unused)]
+    use crate::{
+        span::dummy_spanned,
+        syntax::{
+            context::Context,
+            r#type::{TyField, Type},
+        },
+        typing::type_of,
+    };
+
+    #[allow(unused)]
+    // Helper function to extract just the type structure, ignoring position info
+    fn extract_type_structure(ty: &Type) -> Type {
+        match ty {
+            Type::Bool => Type::Bool,
+            Type::Nat => Type::Nat,
+            Type::Unit => Type::Unit,
+            Type::TySelf => Type::TySelf,
+            Type::TyVar(s) => Type::TyVar(s.clone()),
+            Type::Arr(t1, t2) => Type::Arr(
+                Box::new(dummy_spanned(extract_type_structure(&t1.v))),
+                Box::new(dummy_spanned(extract_type_structure(&t2.v))),
+            ),
+            Type::TyRecord(fields) => Type::TyRecord(
+                fields
+                    .iter()
+                    .map(|field| TyField {
+                        label: field.label.clone(),
+                        ty: dummy_spanned(extract_type_structure(&field.ty.v)),
+                    })
+                    .collect(),
+            ),
+            Type::TyTagging(fields) => Type::TyTagging(
+                fields
+                    .iter()
+                    .map(|field| TyField {
+                        label: field.label.clone(),
+                        ty: dummy_spanned(extract_type_structure(&field.ty.v)),
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    #[rstest]
+    #[case(r"unit", Some(Type::Unit))]
+    #[case(r"unit;0", None)]
+    #[case(r"(\:Bool. ( unit ; 0 ) ) true", Some(Type::Bool))]
+    #[case(r"(\:Bool.(unit;unit;0))true", Some(Type::Bool))]
+    #[case(r"true", Some(Type::Bool))]
+    #[case(r"false", Some(Type::Bool))]
+    #[case(
     r"{b=(\x:Bool.x)false, if true then unit else unit}",
     Some(Type::TyRecord(vec![
         TyField {
@@ -460,62 +534,62 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
         },
     ]))
 )]
-#[case(
-    r"\:Bool.0",
-    Some(Type::Arr(
-        Box::new(dummy_spanned(Type::Bool)),
-        Box::new(dummy_spanned(Type::Bool))
-    ))
-)]
-#[case(
-    r"\:Bool.\:Bool.0",
-    Some(Type::Arr(
-        Box::new(dummy_spanned(Type::Bool)),
-        Box::new(dummy_spanned(Type::Arr(
+    #[case(
+        r"\:Bool.0",
+        Some(Type::Arr(
             Box::new(dummy_spanned(Type::Bool)),
             Box::new(dummy_spanned(Type::Bool))
-        )))
-    ))
-)]
-#[case(
-    r"\:Bool->Bool.0",
-    Some(Type::Arr(
-        Box::new(dummy_spanned(Type::Arr(
+        ))
+    )]
+    #[case(
+        r"\:Bool.\:Bool.0",
+        Some(Type::Arr(
             Box::new(dummy_spanned(Type::Bool)),
-            Box::new(dummy_spanned(Type::Bool))
-        ))),
-        Box::new(dummy_spanned(Type::Arr(
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            )))
+        ))
+    )]
+    #[case(
+        r"\:Bool->Bool.0",
+        Some(Type::Arr(
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ))),
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ))),
+        ))
+    )]
+    #[case(r"if true then false else true", Some(Type::Bool))]
+    #[case(r"if true then false else 1", None)]
+    #[case(r"if 1 then false else true", None)]
+    #[case(
+        r"(\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true",
+        Some(Type::Arr(
             Box::new(dummy_spanned(Type::Bool)),
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ))),
+        ))
+    )]
+    #[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
+    #[case(
+        r"(\:(Bool->Bool)->Bool.0) \:Bool->Bool.0 true",
+        Some(Type::Arr(
+            Box::new(dummy_spanned(Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ))),
             Box::new(dummy_spanned(Type::Bool))
-        ))),
-    ))
-)]
-#[case(r"if true then false else true", Some(Type::Bool))]
-#[case(r"if true then false else 1", None)]
-#[case(r"if 1 then false else true", None)]
-#[case(
-    r"(\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true",
-    Some(Type::Arr(
-        Box::new(dummy_spanned(Type::Bool)),
-        Box::new(dummy_spanned(Type::Arr(
-            Box::new(dummy_spanned(Type::Bool)),
-            Box::new(dummy_spanned(Type::Bool))
-        ))),
-    ))
-)]
-#[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
-#[case(
-    r"(\:(Bool->Bool)->Bool.0) \:Bool->Bool.0 true",
-    Some(Type::Arr(
-        Box::new(dummy_spanned(Type::Arr(
-            Box::new(dummy_spanned(Type::Bool)),
-            Box::new(dummy_spanned(Type::Bool))
-        ))),
-        Box::new(dummy_spanned(Type::Bool))
-    ))
-)]
-#[case(
-    r"
+        ))
+    )]
+    #[case(
+        r"
 (\:Bool->Bool. \:Bool->Bool.
     if 0 true then
         if 1 true then false else true
@@ -524,10 +598,10 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
 )
 (\:Bool.0)
 \:Bool.if 0 then false else true",
-    Some(Type::Bool)
-)]
-#[case(
-    r"
+        Some(Type::Bool)
+    )]
+    #[case(
+        r"
 (\:Bool->Bool. \:Bool->Bool.
     if 0 true then
         if 1 true then false else true
@@ -536,10 +610,10 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
 )
 (\:Bool->Bool.0)
 \:Bool.if 0 then false else true",
-    None
-)]
-#[case(
-    r"
+        None
+    )]
+    #[case(
+        r"
 (\:Bool->Bool. \:Bool->Bool.
     if 0 true then
         if 1 true then 0 else 1
@@ -548,10 +622,10 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
 )
 (\:Bool->Bool.0)
 \:Bool.if 0 then false else true",
-    None
-)]
-#[case(
-    r"
+        None
+    )]
+    #[case(
+        r"
 (\:Bool->Bool. \:Bool->Bool.
     if 0 true then
         1
@@ -560,16 +634,21 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
 )
 (\:Bool.0)
 \:Bool.if 0 then false else true",
-    None
-)]
-fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
-    use crate::parser;
+        None
+    )]
+    fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
+        use crate::parser;
 
-    let ctx = Context::default();
-    let t = parser::parse(input).unwrap();
-    let ty = type_of(&ctx, &t);
-    match expected {
-        Some(ty2) => assert_eq!(ty.unwrap(), ty2),
-        None => assert!(ty.is_err()),
+        let ctx = Context::default();
+        let t = parser::parse(input).unwrap();
+        let ty = type_of(&ctx, &t);
+        match expected {
+            Some(ty2) => {
+                let result_ty = ty.unwrap();
+                let extracted_result = extract_type_structure(&result_ty);
+                assert_eq!(extracted_result, ty2);
+            }
+            None => assert!(ty.is_err()),
+        }
     }
 }

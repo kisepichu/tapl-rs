@@ -1444,7 +1444,7 @@ mod tests {
                 arms.iter()
                     .map(|arm| Arm {
                         term: spanned(extract_term_structure(&arm.term.v)),
-                        ptag: arm.ptag.clone(),
+                        ptag: extract_ptmptag_structure(&arm.ptag),
                     })
                     .collect(),
             ),
@@ -1487,6 +1487,16 @@ mod tests {
     }
 
     #[allow(unused)]
+    // Helper function to extract just the PTmpTag structure, ignoring position info
+    fn extract_ptmptag_structure(ptag: &PTmpTag) -> PTmpTag {
+        PTmpTag {
+            ty: extract_type_structure(&ptag.ty),
+            label: ptag.label.clone(),
+            nargs: ptag.nargs.clone(),
+        }
+    }
+
+    #[allow(unused)]
     // Helper function to extract just the pattern structure, ignoring position info
     fn extract_pattern_structure(pat: &Pattern) -> Pattern {
         match pat {
@@ -1500,7 +1510,7 @@ mod tests {
                     })
                     .collect(),
             ),
-            Pattern::TmpTagging(ptag) => Pattern::TmpTagging(ptag.clone()),
+            Pattern::TmpTagging(ptag) => Pattern::TmpTagging(extract_ptmptag_structure(ptag)),
         }
     }
 
