@@ -84,13 +84,13 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                         };
                         Err(ErrorWithPos {
                             message: format!(
-                                "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
+                                "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, but found {}: {}",
                                 t.v, t1_str, ty11.v, t2.v, ty2
                             ),
                             level: 90,
                             kind: None,
-                            line: t.line,
-                            column: t.column,
+                            line: t2.line,
+                            column: t2.column,
                         })
                     }
                 }
@@ -101,8 +101,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 }),
             }
         }
@@ -122,8 +122,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 })
             }
         }
@@ -139,8 +139,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 })
             }
         }
@@ -156,8 +156,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 })
             }
         }
@@ -231,8 +231,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 })
             }
         }
@@ -253,8 +253,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 });
             }
             type_of(&ctx_, t2)
@@ -339,8 +339,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                                 ),
                                 level: 90,
                                 kind: None,
-                                line: t.line,
-                                column: t.column,
+                                line: arm.ptag_pos.0,
+                                column: arm.ptag_pos.1,
                             });
                         }
                         let ctx_ = ptyarm.context.clone();

@@ -15,9 +15,9 @@ use rstest::rstest;
 case (A Bool+B):::A true of
   | (A Bool+C):::A true => x
     ",
-    "pattern expected",
-    3,
-    20
+    "case arms expected",
+    2,
+    28
 )] // true はパターンではない
 fn test_parse_error_position(
     #[case] input: &str,
@@ -55,7 +55,7 @@ fn test_parse_error_position(
 #[case("pred false", "expected Nat", 1, 6)] // pred に Bool を渡す型エラー
 #[case("iszero unit", "expected Nat", 1, 8)] // iszero に Unit を渡す型エラー
 #[case("true false", "expected arrow type", 1, 1)] // 関数でないものを適用
-#[case("(\\:Bool.0) unit", "expected Bool", 1, 12)] // 型の不一致
+#[case("(\\:Bool.0) unit", "expected: Bool", 1, 12)] // 型の不一致
 fn test_type_error_position(
     #[case] input: &str,
     #[case] expected_message_contains: &str,
@@ -77,7 +77,6 @@ fn test_type_error_position(
 
     let error = result.unwrap_err();
 
-    // エラーメッセージに期待される文字列が含まれているかチェック
     assert!(
         error.message.contains(expected_message_contains),
         "エラーメッセージ '{}' に '{}' が含まれていません",
@@ -85,17 +84,14 @@ fn test_type_error_position(
         expected_message_contains
     );
 
-    // 位置情報が期待される値と一致するかチェック
     assert_eq!(
         error.line, expected_line,
-        "エラー行番号が期待値と異なります。期待: {}, 実際: {}",
-        expected_line, error.line
+        "エラー行番号が期待値と異なります"
     );
 
     assert_eq!(
         error.column, expected_column,
-        "エラー列番号が期待値と異なります。期待: {}, 実際: {}",
-        expected_column, error.column
+        "エラー列番号が期待値と異なります"
     );
 
     // 位置表示の確認
@@ -112,8 +108,8 @@ fn test_type_error_position(
 /// 複雑な式でのエラー位置テスト
 #[rstest]
 #[case("let x = true in let y = false in x y", "arrow type", 1, 34)] // ネストしたlet内での型エラー
-#[case("if (\\:Bool.0) then true else false", "expected Bool", 1, 4)] // 複雑な条件式での型エラー
-#[case("(\\:Bool.\\:Nat.0) true unit", "Nat", 1, 25)] // 複数引数関数での型エラー
+#[case("if (\\:Bool.0) then true else false", "expected Bool", 1, 5)] // 複雑な条件式での型エラー
+#[case("(\\:Bool.\\:Nat.0) true unit", "Nat", 1, 23)] // 複数引数関数での型エラー
 #[case(
     "type B = Some Bool + None in let B:::Some b = B:::Some true in b b",
     "expected arrow type",

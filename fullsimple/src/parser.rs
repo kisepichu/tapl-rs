@@ -722,6 +722,47 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 column: i.get_utf8_column(),
             })
         })?;
+    
+    // Create a spanned version of t2_renamed that preserves position information
+    // We need to map the renamed term back to the original structure with positions
+    fn preserve_positions(original: &Spanned<Term>, renamed: &Term) -> Spanned<Term> {
+        use crate::span::Spanned;
+        
+        match (&original.v, renamed) {
+            (Term::TmpVar(_), Term::Var(_)) => {
+                // This is a variable that was renamed, preserve its position
+                Spanned {
+                    v: renamed.clone(),
+                    start: original.start,
+                    line: original.line,
+                    column: original.column,
+                }
+            }
+            (Term::App(o1, o2), Term::App(r1, r2)) => {
+                Spanned {
+                    v: Term::App(
+                        Box::new(preserve_positions(o1, &r1.v)),
+                        Box::new(preserve_positions(o2, &r2.v)),
+                    ),
+                    start: original.start,
+                    line: original.line,
+                    column: original.column,
+                }
+            }
+            _ => {
+                // For other cases, just use the original position with renamed content
+                Spanned {
+                    v: renamed.clone(),
+                    start: original.start,
+                    line: original.line,
+                    column: original.column,
+                }
+            }
+        }
+    }
+    
+    let t2_spanned = preserve_positions(&t2.st, &t2_renamed);
+    
     Ok((
         i,
         Prg {
@@ -739,12 +780,7 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                         line: t1.st.line,
                         column: t1.st.column,
                     }),
-                    Box::new(Spanned {
-                        v: t2_renamed,
-                        start: t2.st.start,
-                        line: t2.st.line,
-                        column: t2.st.column,
-                    }),
+                    Box::new(t2_spanned),
                 ),
                 start: start_pos.0,
                 line: start_pos.1,
@@ -782,20 +818,12 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     )
     .parse(i)?;
 
-    let renamed = t2.st.v.subst_name(name.st.v.as_str());
+    let renamed = t2.st.v.subst_name_spanned(name.st.v.as_str(), &t2.st);
     Ok((
         i,
         Prg {
             st: Spanned {
-                v: Term::Let(
-                    Box::new(t1.st),
-                    Box::new(Spanned {
-                        v: renamed,
-                        start: t2.st.start,
-                        line: t2.st.line,
-                        column: t2.st.column,
-                    }),
-                ),
+                v: Term::Let(Box::new(t1.st), Box::new(renamed)),
                 start: start_pos.0,
                 line: start_pos.1,
                 column: start_pos.2,
@@ -898,6 +926,7 @@ fn parse_arm(i: Span) -> IResult<Span, Prg<Arm>, ErrorWithPos> {
                         column: t.st.column,
                     },
                     ptag: ptag_renamed,
+                    ptag_pos: (ptag.st.line, ptag.st.column),
                 },
                 start: start_pos.0,
                 line: start_pos.1,
@@ -990,16 +1019,11 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("term expected", 20, preceded(multispace0, parse_term)),
     )
     .parse(i)?;
-    let renamed = t.st.v.subst_type_name(name.st.v.as_str(), &ty.st.v);
+    let renamed = t.st.v.subst_type_name_spanned(name.st.v.as_str(), &ty.st.v, &t.st);
     Ok((
         i,
         Prg {
-            st: Spanned {
-                v: renamed,
-                start: t.st.start,
-                line: t.st.line,
-                column: t.st.column,
-            },
+            st: renamed,
             lasterr: name.lasterr.or(ty.lasterr).or(t.lasterr),
         },
     ))
@@ -1055,8 +1079,8 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("term expected", 20, preceded(multispace0, parse_term)),
     )
     .parse(i)?;
-    let t1_renamed = t1.st.v.subst_name(name.st.v.as_str());
-    let t2_renamed = t2.st.v.subst_name(name.st.v.as_str());
+    let t1_renamed = t1.st.v.subst_name_spanned(name.st.v.as_str(), &t1.st);
+    let t2_renamed = t2.st.v.subst_name_spanned(name.st.v.as_str(), &t2.st);
     Ok((
         i,
         Prg {
@@ -1064,15 +1088,7 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 v: Term::Let(
                     Box::new(Spanned {
                         v: Term::Fix(Box::new(Spanned {
-                            v: Term::Abs(
-                                ty.st.v,
-                                Box::new(Spanned {
-                                    v: t1_renamed,
-                                    start: t1.st.start,
-                                    line: t1.st.line,
-                                    column: t1.st.column,
-                                }),
-                            ),
+                            v: Term::Abs(ty.st.v, Box::new(t1_renamed)),
                             start: ty.st.start,
                             line: ty.st.line,
                             column: ty.st.column,
@@ -1081,12 +1097,7 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                         line: ty.st.line,
                         column: ty.st.column,
                     }),
-                    Box::new(Spanned {
-                        v: t2_renamed,
-                        start: t2.st.start,
-                        line: t2.st.line,
-                        column: t2.st.column,
-                    }),
+                    Box::new(t2_renamed),
                 ),
                 start: start_pos.0,
                 line: start_pos.1,
@@ -1120,16 +1131,8 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 
     let result = match name.clone() {
         Some(name) => {
-            let renamed = t.st.v.subst_name(&name.st.v);
-            Term::Abs(
-                ty.st.v,
-                Box::new(Spanned {
-                    v: renamed,
-                    start: t.st.start,
-                    line: t.st.line,
-                    column: t.st.column,
-                }),
-            )
+            let renamed = t.st.v.subst_name_spanned(&name.st.v, &t.st);
+            Term::Abs(ty.st.v, Box::new(renamed))
         }
         None => Term::Abs(ty.st.v, Box::new(t.st)),
     };
@@ -1455,13 +1458,10 @@ mod tests {
                 ty: extract_type_structure(&tag.ty),
                 label: tag.label.clone(),
             }),
-            Term::Case(t, arms) => Term::Case(
+                        Term::Case(t, arms) => Term::Case(
                 Box::new(spanned(extract_term_structure(&t.v))),
                 arms.iter()
-                    .map(|arm| Arm {
-                        term: spanned(extract_term_structure(&arm.term.v)),
-                        ptag: extract_ptmptag_structure(&arm.ptag),
-                    })
+                    .map(|arm| extract_arm_structure(arm))
                     .collect(),
             ),
             Term::Fix(t) => Term::Fix(Box::new(spanned(extract_term_structure(&t.v)))),
@@ -1509,6 +1509,16 @@ mod tests {
             ty: extract_type_structure(&ptag.ty),
             label: ptag.label.clone(),
             nargs: ptag.nargs.clone(),
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the Arm structure, ignoring position info
+    fn extract_arm_structure(arm: &Arm) -> Arm {
+        Arm {
+            ptag: extract_ptmptag_structure(&arm.ptag),
+            term: spanned(extract_term_structure(&arm.term.v)),
+            ptag_pos: (1, 1), // Use dummy position for testing
         }
     }
 
@@ -1792,6 +1802,7 @@ case <Bool->Self, Unit->Self>:::0 true of
                     nargs: vec!["0".to_string()],
                 },
                 term: dummy_spanned(Term::Var(0)),
+                ptag_pos: (1, 1),
             },
             Arm {
                 ptag: PTmpTag {
@@ -1815,6 +1826,7 @@ case <Bool->Self, Unit->Self>:::0 true of
                     nargs: vec!["0".to_string()],
                 },
                 term: dummy_spanned(Term::False),
+                ptag_pos: (1, 1),
             },
         ],
     ))

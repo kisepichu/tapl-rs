@@ -75,6 +75,7 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
                         Ok::<_, String>(Arm {
                             ptag: b.ptag.clone(),
                             term: dummy_spanned(walk(j, s, c + b.ptag.len() as isize, &b.term.v)?),
+                            ptag_pos: b.ptag_pos,
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
