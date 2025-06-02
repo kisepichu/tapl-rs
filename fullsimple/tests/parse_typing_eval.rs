@@ -110,6 +110,17 @@ case Ty:::0 false true true of
 )]
 #[case(
     r"
+type Ty = A Bool Bool Bool + B Unit in
+case Ty:::A false true true of
+  | Ty:::A b c d => b
+  | Ty:::B u => true
+    ",
+    Some(r"Bool"),
+    Some(r"false")
+)]
+// 21
+#[case(
+    r"
 type Ty = <Bool->Bool->Bool->Self, Unit->Self> in
 case Ty:::0 false true false of
   | Ty:::1 u => false
@@ -118,7 +129,6 @@ case Ty:::0 false true false of
     None,
     None
 )]
-// 21
 #[case(
     r"
 type Ty = <Unit->Self, Bool->Bool->Bool->Self> in
@@ -227,6 +237,7 @@ iscircle (Shape:::Circle unit unit unit)
     Some(r"Bool"),
     Some(r"true")
 )]
+// 31
 #[case(
     r"
 type N = Bool in
@@ -237,7 +248,6 @@ swap {true, false}
     Some(r"{0:Bool, 1:Bool}"),
     Some(r"{0=false, 1=true}")
 )]
-// 31
 #[case(
     r"
 type P = Pair Bool Bool in
@@ -331,6 +341,7 @@ iszero (succ zero)
     Some(r"Bool"),
     Some(r"false")
 )]
+// 41
 #[case(
     r"
 iszero true
@@ -338,7 +349,6 @@ iszero true
     None,
     None
 )]
-// 41
 #[case(
     r"
 succ true

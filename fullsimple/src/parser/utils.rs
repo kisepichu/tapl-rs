@@ -85,6 +85,43 @@ where
     }
 }
 
+pub fn append_err<'a, F, O>(
+    message: &str,
+    level: usize,
+    mut parser: F,
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Prg<O>, ErrorWithPos>
+where
+    F: Parser<Span<'a>, Output = Prg<O>, Error = ErrorWithPos>,
+{
+    move |i: Span<'a>| {
+        parser.parse(i).map_err(|e| match e {
+            nom::Err::Error(e) => {
+                let e = ErrorWithPos {
+                    message: format!(
+                        "{} at line {}, column {}\n {}",
+                        e.message, e.line, e.column, message
+                    ),
+                    level: level as u32,
+                    line: i.location_line(),
+                    column: i.get_utf8_column(),
+                    kind: None,
+                };
+                nom::Err::Error(e)
+            }
+            _ => {
+                let e = ErrorWithPos {
+                    message: message.to_string(),
+                    level: level as u32,
+                    line: i.location_line(),
+                    column: i.get_utf8_column(),
+                    kind: None,
+                };
+                nom::Err::Error(e)
+            }
+        })
+    }
+}
+
 pub fn chmax_err<'a, F, O>(
     lasterr: &Option<ErrorWithPos>,
     mut parser: F,

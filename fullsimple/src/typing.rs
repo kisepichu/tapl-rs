@@ -226,7 +226,7 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
             } else {
                 Err(ErrorWithPos {
                     message: format!(
-                        "type check failed: {}\n  expected boolean type, but found {}: {}",
+                        "type check failed: {}\n  expected Bool, but found {}: {}",
                         t.v, t1.v, ty1
                     ),
                     level: 90,

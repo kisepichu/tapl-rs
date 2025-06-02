@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::{
-    parser::utils::{chmax_err, update_err, with_pos},
+    parser::utils::{append_err, chmax_err, update_err, with_pos},
     span::{ErrorWithPos, Prg, Span, Spanned},
     syntax::{
         pattern::{PTmpTag, PatField, Pattern},
@@ -183,8 +183,11 @@ fn parse_tytagging(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
 fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = char('(').parse(i)?;
     let (i, t) = update_err("type expected", 20, parse_type_space).parse(i)?;
+
+    let lasterr_so_far = t.lasterr.clone();
+
     let (i, _) = chmax_err(
-        &t.lasterr,
+        &lasterr_so_far,
         update_err("')' expected", 50, with_pos(char(')'))),
     )
     .parse(i)?;
@@ -808,16 +811,33 @@ fn parse_if(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, _) = parse_reserved_span("if").parse(i)?;
     let (i, t1) =
         update_err("condition expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = parse_reserved_span("then").parse(i)?;
-    let (i, t2) = update_err(
-        "then branch expected",
-        20,
-        preceded(multispace0, parse_term),
+
+    let lasterr_so_far = t1.lasterr.clone();
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'then' expected", 60, parse_reserved_span("then")),
     )
     .parse(i)?;
-    let (i, _) = parse_reserved_span("else").parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err(
+            "then branch expected",
+            20,
+            preceded(multispace0, parse_term),
+        ),
+    )
+    .parse(i)?;
+
+    let lasterr_so_far = lasterr_so_far.or(t2.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'else' expected", 60, parse_reserved_span("else")),
+    )
+    .parse(i)?;
     let (i, t3) = chmax_err(
-        &t1.lasterr.or(t2.lasterr),
+        &lasterr_so_far,
         update_err(
             "else branch expected",
             20,
@@ -835,7 +855,7 @@ fn parse_if(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: t3.lasterr,
+            lasterr: lasterr_so_far.or(t3.lasterr),
         },
     ))
 }
@@ -922,7 +942,11 @@ fn parse_case(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     .parse(i)?;
     let (i, arms) = chmax_err(
         &lasterr_so_far,
-        update_err("case arms expected", 20, preceded(multispace0, parse_arms)),
+        append_err(
+            "case arms expected: ",
+            60,
+            preceded(multispace0, parse_arms),
+        ),
     )
     .parse(i)?;
     Ok((
@@ -934,7 +958,7 @@ fn parse_case(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: t.lasterr.or(arms.lasterr),
+            lasterr: lasterr_so_far.or(arms.lasterr),
         },
     ))
 }
@@ -953,7 +977,8 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
 
     // Accumulate errors so far
-    let lasterr_so_far = name.clone().lasterr.or(ty.lasterr.clone());
+    let lasterr_so_far = name.lasterr.clone();
+    let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
 
     let (i, _) = chmax_err(
         &lasterr_so_far,
@@ -1016,11 +1041,9 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
 
     // Accumulate errors so far
-    let lasterr_so_far = name
-        .clone()
-        .lasterr
-        .or(ty.lasterr.clone())
-        .or(t1.lasterr.clone());
+    let lasterr_so_far = name.lasterr.clone();
+    let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
+    let lasterr_so_far = lasterr_so_far.or(t1.lasterr.clone());
 
     let (i, _) = chmax_err(
         &lasterr_so_far,
@@ -1081,12 +1104,19 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, name) = opt(parse_ident_span).parse(i)?;
     let (i, _) = preceded(preceded(multispace0, char(':')), multispace0).parse(i)?;
     let (i, ty) = update_err("type expected", 20, parse_type_space).parse(i)?;
+
+    let lasterr_so_far = name
+        .as_ref()
+        .and_then(|n| n.lasterr.clone())
+        .or(ty.lasterr.clone());
+
     let (i, _) = chmax_err(
-        &ty.lasterr,
+        &lasterr_so_far,
         update_err("'.' expected", 50, with_pos(char('.'))),
     )
     .parse(i)?;
-    let (i, t) = chmax_err(&ty.lasterr, update_err("term expected", 20, parse_term)).parse(i)?;
+    let (i, t) =
+        chmax_err(&lasterr_so_far, update_err("term expected", 20, parse_term)).parse(i)?;
 
     let result = match name.clone() {
         Some(name) => {
@@ -1112,11 +1142,7 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: name
-                .as_ref()
-                .and_then(|n| n.lasterr.clone())
-                .or(ty.lasterr)
-                .or(t.lasterr),
+            lasterr: lasterr_so_far.or(t.lasterr),
         },
     ))
 }
@@ -1125,8 +1151,11 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, _) = char('(').parse(i)?;
     let (i, t) = update_err("term expected", 20, parse_term_space).parse(i)?;
+
+    let lasterr_so_far = t.lasterr.clone();
+
     let (i, _) = chmax_err(
-        &t.lasterr,
+        &lasterr_so_far,
         update_err("')' expected", 50, with_pos(char(')'))),
     )
     .parse(i)?;
