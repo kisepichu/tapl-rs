@@ -1,16 +1,17 @@
+use crate::span::Spanned;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     Var(usize),
-    Abs(Box<Term>),
-    App(Box<Term>, Box<Term>),
+    Abs(Box<Spanned<Term>>),
+    App(Box<Spanned<Term>>, Box<Spanned<Term>>),
 }
 
-impl fmt::Display for Term {
+impl fmt::Display for Spanned<Term> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fn p(term: &Term, has_arg_after: bool, is_app_right: bool) -> String {
-            match term {
+        fn p(term: &Spanned<Term>, has_arg_after: bool, is_app_right: bool) -> String {
+            match &term.v {
                 Term::Var(x) => format!("{}", x),
                 Term::Abs(t) => {
                     if has_arg_after {

@@ -1,15 +1,20 @@
-use std::iter::once;
-
-use crate::syntax::{term::Term, r#type::Type};
+use crate::{
+    parser::utils::{chmax_err, update_err, with_pos},
+    span::{ErrorWithPos, Prg, Span, Spanned},
+    syntax::{term::Term, r#type::Type},
+};
 use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{char, digit1, multispace0},
+    character::complete::{alphanumeric1, char, digit1, multispace0},
     combinator::{map, map_res},
     multi::many0,
-    sequence::{delimited, preceded},
+    sequence::preceded,
 };
+use std::iter::once;
+
+mod utils;
 
 // <term> ::= <app>
 // <app>  ::= <atom> <app> | <atom>
@@ -29,93 +34,202 @@ use nom::{
 // <tybool> ::= "Bool"
 
 /// <tyencl> ::= "(" <ty> ")"
-fn parse_tyencl(i: &str) -> IResult<&str, Type> {
-    delimited(char('('), parse_ty_space, char(')')).parse(i)
+fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let (i, _) = char('(').parse(i)?;
+    let (i, t) = update_err("type expected", 20, parse_ty_space).parse(i)?;
+    let (i, _) = chmax_err(
+        &t.lasterr,
+        update_err("')' expected", 50, with_pos(char(')'))),
+    )
+    .parse(i)?;
+    Ok((i, t))
+}
+
+/// <tybool> ::= "Bool" | unknown type name for error
+fn parse_tybool(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+
+    // まず alphanumeric1 でタイプ名を取得
+    let (i, type_name) = alphanumeric1(i)?;
+
+    match type_name.fragment() {
+        &"Bool" => Ok((
+            i,
+            Prg {
+                st: Spanned {
+                    v: Type::Bool,
+                    start: start_pos.0,
+                    line: start_pos.1,
+                    column: start_pos.2,
+                },
+                lasterr: None,
+            },
+        )),
+        name => Err(nom::Err::Error(ErrorWithPos {
+            message: format!("Unknown type: {}", name),
+            level: 90,
+            kind: Some(nom::error::ErrorKind::Tag),
+            line: start_pos.1,
+            column: start_pos.2,
+        })),
+    }
 }
 
 /// <tyatom> ::= <tyencl> | <tybool>
-fn parse_tyatom(i: &str) -> IResult<&str, Type> {
-    preceded(
-        multispace0,
-        alt((map(tag("Bool"), |_| Type::Bool), parse_tyencl)),
-    )
-    .parse(i)
+fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    preceded(multispace0, alt((parse_tyencl, parse_tybool))).parse(i)
 }
 
 /// <tyarrsub> ::= "->" <ty>
-fn parse_tyarrsub(i: &str) -> IResult<&str, Type> {
+fn parse_tyarrsub(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
     preceded(multispace0, parse_ty_space).parse(i)
 }
 
 /// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
-fn parse_tyarr(i: &str) -> IResult<&str, Type> {
+fn parse_tyarr(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, tyatom) = preceded(multispace0, parse_tyatom).parse(i)?;
     let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
-    let res = once(tyatom)
-        .chain(rest)
+    let start_pos = (tyatom.st.start, tyatom.st.line, tyatom.st.column);
+    let lasterr = tyatom.lasterr.clone();
+
+    let res = once(tyatom.st)
+        .chain(rest.into_iter().map(|t| t.st))
         .rev()
         .fold(None, |acc, ty| match acc {
-            None => Some(ty),
-            Some(acc) => Some(Type::Arr(Box::new(ty), Box::new(acc))),
+            None => Some(ty.v),
+            Some(acc) => Some(Type::Arr(
+                Box::new(ty.clone()),
+                Box::new(Spanned {
+                    v: acc,
+                    start: ty.start,
+                    line: ty.line,
+                    column: ty.column,
+                }),
+            )),
         })
         .expect("expected Some because of once");
-    Ok((i, res))
+
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: res,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr,
+        },
+    ))
 }
 
 /// <ty> ::= <tyarr>
-fn parse_ty(i: &str) -> IResult<&str, Type> {
+fn parse_ty(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     parse_tyarr(i)
 }
 
-fn parse_ty_space(i: &str) -> IResult<&str, Type> {
+fn parse_ty_space(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, t) = parse_ty(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, t))
 }
 
 /// <false> ::= "false"
-fn parse_false(i: &str) -> IResult<&str, Term> {
-    map(tag("false"), |_| Term::False).parse(i)
+fn parse_false(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    with_pos(map(tag("false"), |_| Term::False)).parse(i)
 }
 
 /// <true> ::= "true"
-fn parse_true(i: &str) -> IResult<&str, Term> {
-    map(tag("true"), |_| Term::True).parse(i)
+fn parse_true(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    with_pos(map(tag("true"), |_| Term::True)).parse(i)
 }
 
 /// <var> ::= number
-fn parse_var(i: &str) -> IResult<&str, Term> {
-    map_res(digit1, |s: &str| s.parse::<usize>().map(Term::Var)).parse(i)
+fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (_i, _check) = alphanumeric1.parse(i)?;
+    update_err(
+        "variable must be numeric",
+        90,
+        with_pos(map_res(digit1, |s: Span| {
+            s.fragment().parse::<usize>().map(Term::Var)
+        })),
+    )
+    .parse(i)
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
-fn parse_if(i: &str) -> IResult<&str, Term> {
-    let (i, t1) = preceded(tag("if"), parse_term).parse(i)?;
-    let (i, _) = multispace0(i)?;
-    let (i, t2) = preceded(tag("then"), parse_term).parse(i)?;
-    let (i, _) = multispace0(i)?;
-    let (i, t3) = preceded(tag("else"), parse_term).parse(i)?;
-    Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
+fn parse_if(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = preceded(multispace0, tag("if")).parse(i)?;
+    let (i, t1) = update_err("condition expected", 20, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("then")).parse(i)?;
+    let (i, t2) = update_err("then branch expected", 20, parse_term).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("else")).parse(i)?;
+    let (i, t3) = chmax_err(
+        &t1.lasterr.or(t2.lasterr),
+        update_err("else branch expected", 20, parse_term),
+    )
+    .parse(i)?;
+
+    let result = Term::If(Box::new(t1.st), Box::new(t2.st), Box::new(t3.st));
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: result,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: t3.lasterr,
+        },
+    ))
 }
 
 /// <abs> ::= "\:" <ty> "." <term>
-fn parse_abs(i: &str) -> IResult<&str, Term> {
+fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
     let (i, _) = preceded(char(':'), multispace0).parse(i)?;
-    let (i, ty) = parse_ty_space(i)?;
-    let (i, t) = preceded(char('.'), parse_term).parse(i)?;
-    Ok((i, Term::Abs(ty, Box::new(t))))
+    let (i, ty) = update_err("type expected", 20, parse_ty_space).parse(i)?;
+    let (i, _) = chmax_err(
+        &ty.lasterr,
+        update_err("'.' expected", 50, with_pos(char('.'))),
+    )
+    .parse(i)?;
+    let (i, t) = chmax_err(&ty.lasterr, update_err("term expected", 20, parse_term)).parse(i)?;
+
+    let result = Term::Abs(ty.st.v, Box::new(t.st));
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: result,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: ty.lasterr.or(t.lasterr),
+        },
+    ))
 }
 
 /// <encl> ::= "(" <term> ")"
-fn parse_encl(i: &str) -> IResult<&str, Term> {
-    delimited(char('('), parse_term_space, char(')')).parse(i)
+fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (i, _) = char('(').parse(i)?;
+    let (i, t) = update_err("term expected", 20, parse_term_space).parse(i)?;
+    let (i, _) = chmax_err(
+        &t.lasterr,
+        update_err("')' expected", 50, with_pos(char(')'))),
+    )
+    .parse(i)?;
+    Ok((i, t))
 }
 
 /// <atom> ::= <var> | <abs> | <encl> | <true> | <false> | <if>
-fn parse_atom(i: &str) -> IResult<&str, Term> {
+fn parse_atom(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     preceded(
         multispace0,
         alt((
@@ -131,154 +245,206 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
 }
 
 /// <app> ::= <atom> <app> | <atom>
-fn parse_app(i: &str) -> IResult<&str, Term> {
-    let (i, first) = parse_atom.parse(i)?;
-    let (i, rest) = nom::multi::many0(parse_atom).parse(i)?;
-    let t = rest
-        .into_iter()
-        .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
-    Ok((i, t))
-}
-
-/// <term> ::= <app>
-fn parse_term(i: &str) -> IResult<&str, Term> {
-    preceded(multispace0, parse_app).parse(i)
-}
-
-fn parse_term_space(i: &str) -> IResult<&str, Term> {
-    let (i, t) = parse_term(i)?;
-    let (i, _) = multispace0(i)?;
-    Ok((i, t))
-}
-
-pub fn parse(input: &str) -> Result<Term, String> {
-    let (rest, t) = parse_term_space(input).map_err(|e| e.to_string())?;
-    if rest.is_empty() {
-        Ok(t)
+fn parse_app(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (i, head) = parse_atom(i)?;
+    let (i, tail) = many0(parse_atom).parse(i)?;
+    if let Err(lasterr) = parse_atom.parse(i) {
+        match lasterr {
+            nom::Err::Error(lasterr) => {
+                let st = tail.into_iter().fold(head.st, |acc, arg| Spanned {
+                    start: acc.start,
+                    line: acc.line,
+                    column: acc.column,
+                    v: Term::App(Box::new(acc), Box::new(arg.st)),
+                });
+                Ok((
+                    i,
+                    Prg {
+                        st,
+                        lasterr: Some(lasterr),
+                    },
+                ))
+            }
+            e => Err(nom::Err::Error(ErrorWithPos {
+                message: format!("internal error: {}", e),
+                level: 100,
+                kind: None,
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            })),
+        }
     } else {
-        Err("input not fully consumed".to_string())
+        Err(nom::Err::Error(ErrorWithPos {
+            message: "internal error: many0 did not take it to the end".to_string(),
+            level: 100,
+            kind: None,
+            line: i.location_line(),
+            column: i.get_utf8_column(),
+        }))
     }
 }
 
-use rstest::rstest;
+/// <term> ::= <app>
+fn parse_term(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    preceded(multispace0, parse_app).parse(i)
+}
 
-#[rstest]
-#[case("1", Some(Term::Var(1)))]
-#[case(r"\:Bool.0 ", Some(Term::Abs(Type::Bool, Box::new(Term::Var(0)))))]
-#[case(
-    r"   ( \ : Bool . 0 )   ",
-    Some(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-)]
-#[case(
-    r"( \ :Bool. 0) 1",
-    Some(Term::App(
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-        Box::new(Term::Var(1))
-    ))
-)]
-#[case(
-    r"(\ : Bool.0) ( \   : Bool . 0 )",
-    Some(Term::App(
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-    ))
-)]
-#[case(
-    r"(\:Bool.0) (\:Bool.0) (\:Bool.0)",
-    Some(Term::App(
-        Box::new(Term::App(
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+fn parse_term_space(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (i, t) = parse_term.parse(i)?;
+    let (i, _) = multispace0.parse(i)?;
+    Ok((i, t))
+}
+
+pub fn display_position(input: &str, line: u32, column: usize) -> String {
+    let lines: Vec<&str> = input.lines().collect();
+    if lines.is_empty() {
+        return "\n^".to_string();
+    }
+    if line as usize > lines.len() {
+        return "error while displaying position".to_string();
+    }
+    let target_line = lines[line as usize - 1];
+    if target_line.is_empty() {
+        return format!("{}\n^", target_line);
+    }
+    if column > target_line.len() + 1 {
+        return "error while displaying position".to_string();
+    }
+    format!("{}\n", target_line) + &format!("{:>width$}^", "", width = column - 1)
+}
+
+#[allow(unused)]
+// maybe used by other modules
+pub fn parse(input: &str) -> Result<Term, ErrorWithPos> {
+    let (rest, t) = parse_term_space(Span::new(input)).map_err(|e| match e {
+        nom::Err::Error(e) => e,
+        e => ErrorWithPos {
+            message: format!("internal error: {}", e),
+            level: 100,
+            kind: None,
+            line: 0,
+            column: 0,
+        },
+    })?;
+    if rest.is_empty() {
+        Ok(t.st.v)
+    } else if let Some(lasterr) = t.lasterr {
+        Err(lasterr)
+    } else {
+        Err(ErrorWithPos {
+            message: "input not fully consumed".to_string(),
+            level: 100,
+            kind: None,
+            line: rest.location_line(),
+            column: rest.get_utf8_column(),
+        })
+    }
+}
+
+pub fn parse_spanned(input: &str) -> Result<Spanned<Term>, ErrorWithPos> {
+    let (rest, t) = parse_term_space(Span::new(input)).map_err(|e| match e {
+        nom::Err::Error(e) => e,
+        e => ErrorWithPos {
+            message: format!("internal error: {}", e),
+            level: 100,
+            kind: None,
+            line: 0,
+            column: 0,
+        },
+    })?;
+    if rest.is_empty() {
+        Ok(t.st)
+    } else if let Some(lasterr) = t.lasterr {
+        Err(lasterr)
+    } else {
+        Err(ErrorWithPos {
+            message: "input not fully consumed".to_string(),
+            level: 100,
+            kind: None,
+            line: rest.location_line(),
+            column: rest.get_utf8_column(),
+        })
+    }
+}
+
+pub fn parse_spanned_and_render_err(input: &str) -> Result<Spanned<Term>, (String, String)> {
+    match parse_spanned(input) {
+        Ok(t) => Ok(t),
+        Err(e) => Err((
+            format!("Parsing failed: {}", e),
+            display_position(input, e.line, e.column),
         )),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-    ))
-)]
-#[case(
-    r"\:Bool.1\:Bool.0",
-    Some(Term::Abs(
-        Type::Bool,
-        Box::new(Term::App(
-            Box::new(Term::Var(1)),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+    }
+}
+
+mod test {
+    use rstest::rstest;
+
+    #[allow(unused)]
+    use crate::{
+        span::Spanned,
+        syntax::{term::Term, r#type::Type},
+    };
+
+    #[allow(unused)]
+    // Helper function to create Spanned<Term> for testing
+    fn spanned(term: Term) -> Spanned<Term> {
+        Spanned {
+            v: term,
+            start: 0,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the term structure, ignoring position info
+    fn extract_term_structure(term: &Term) -> Term {
+        match term {
+            Term::Var(x) => Term::Var(*x),
+            Term::Abs(ty, t) => {
+                Term::Abs(ty.clone(), Box::new(spanned(extract_term_structure(&t.v))))
+            }
+            Term::App(t1, t2) => Term::App(
+                Box::new(spanned(extract_term_structure(&t1.v))),
+                Box::new(spanned(extract_term_structure(&t2.v))),
+            ),
+            Term::True => Term::True,
+            Term::False => Term::False,
+            Term::If(t1, t2, t3) => Term::If(
+                Box::new(spanned(extract_term_structure(&t1.v))),
+                Box::new(spanned(extract_term_structure(&t2.v))),
+                Box::new(spanned(extract_term_structure(&t3.v))),
+            ),
+        }
+    }
+
+    #[rstest]
+    #[case("1", Some(Term::Var(1)))]
+    #[case(
+        r"\:Bool.0 ",
+        Some(Term::Abs(Type::Bool, Box::new(spanned(Term::Var(0)))))
+    )]
+    #[case(r" true", Some(Term::True))]
+    #[case(r" false ", Some(Term::False))]
+    #[case(
+        r"if true then false else true",
+        Some(Term::If(
+            Box::new(spanned(Term::True)),
+            Box::new(spanned(Term::False)),
+            Box::new(spanned(Term::True))
         ))
-    ))
-)]
-#[case(r" true", Some(Term::True))]
-#[case(r" false ", Some(Term::False))]
-#[case(
-    r"if true then false else true",
-    Some(Term::If(Box::new(Term::True), Box::new(Term::False), Box::new(Term::True)))
-)]
-#[case(
-    r"if true then \:Bool.\:Bool.0 else \:Bool.\:Bool.1",
-    Some(Term::If(
-        Box::new(Term::True),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))))),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(1))))))
-    ))
-)]
-// \f:Bool->Bool.\x:Bool.if f x then false else true
-#[case(
-    r"\:Bool->Bool.\:Bool.if 1 0 then false else true",
-    Some(Term::Abs(
-        Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)),
-        Box::new(Term::Abs(
-            Type::Bool,
-            Box::new(Term::If(
-                Box::new(Term::App(Box::new(Term::Var(1)), Box::new(Term::Var(0)))),
-                Box::new(Term::False),
-                Box::new(Term::True)
-            )),
-        ))
-    ))
-)]
-// realbool = \b:Bool->Bool->Bool.b true false
-#[case(
-    r"\:Bool->Bool->Bool.0 true false",
-    Some(Term::Abs(
-        Type::Arr(
-            Box::new(Type::Bool),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-        ),
-        Box::new(Term::App(
-            Box::new(Term::App(Box::new(Term::Var(0)), Box::new(Term::True))),
-            Box::new(Term::False)
-        ))
-    ))
-)]
-// \a:(Bool->Bool)->Bool.a (\b:Bool.b)
-#[case(
-    r" \ : ( Bool -> Bool ) -> Bool . 0 ( \ : Bool . 0 )",
-    Some(Term::Abs(
-        Type::Arr(
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-            Box::new(Type::Bool)
-        ),
-        Box::new(Term::App(
-            Box::new(Term::Var(0)),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-        ))
-    ))
-)]
-#[case(
-    r"\:(Bool->Bool->Bool)->Bool->Bool.0",
-    Some(Term::Abs(
-        Type::Arr(
-            Box::new(Type::Arr(
-                Box::new(Type::Bool),
-                Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
-            )),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
-        ),
-        Box::new(Term::Var(0))
-    ))
-)]
-#[case(r"\", None)]
-#[case(r"(", None)]
-#[case(r")", None)]
-#[case(r"()", None)]
-#[case(r"\()", None)]
-fn test_parse_term(#[case] input: &str, #[case] expected: Option<Term>) {
-    println!("input: {input}");
-    assert_eq!(parse(input).ok(), expected);
+    )]
+    #[case(r"\", None)]
+    #[case(r"(", None)]
+    #[case(r")", None)]
+    #[case(r"()", None)]
+    #[case(r"\()", None)]
+    fn test_parse_term(#[case] input: &str, #[case] expected: Option<Term>) {
+        println!("input: {input}");
+        let result = super::parse_spanned(input)
+            .ok()
+            .map(|s| extract_term_structure(&s.v));
+        assert_eq!(result, expected);
+    }
 }

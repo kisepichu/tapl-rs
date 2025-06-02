@@ -1,19 +1,24 @@
 use std::iter::once;
 
-use crate::syntax::{
-    pattern::{PTmpTag, PatField, Pattern},
-    term::{Arm, Field, Tag, Term},
-    r#type::{TyField, Type},
+use crate::{
+    parser::utils::{append_err, chmax_err, update_err, with_pos},
+    span::{ErrorWithPos, Prg, Span, Spanned},
+    syntax::{
+        pattern::{PTmpTag, PatField, Pattern},
+        term::{Arm, Field, Tag, Term},
+        r#type::{TyField, Type},
+    },
 };
 use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alpha1, char, digit1, multispace0},
+    character::complete::{alpha1, alphanumeric1, char, digit1, multispace0},
     combinator::{map, map_res, opt},
     multi::{many0, many1},
-    sequence::{delimited, preceded},
+    sequence::preceded,
 };
+mod utils;
 
 fn reserved_check(ident: &str) -> bool {
     let rs = [
@@ -23,396 +28,103 @@ fn reserved_check(ident: &str) -> bool {
     rs.iter().any(|s| *s == ident)
 }
 
-impl Term {
-    fn subst_name(&self, zero_name: &str) -> Term {
-        fn walk(t: &Term, z: &str, c: usize) -> Term {
-            match t {
-                Term::Var(x) => Term::Var(*x),
-                Term::TmpVar(s) => {
-                    if z == *s {
-                        Term::Var(c)
-                    } else {
-                        t.clone()
-                    }
-                }
-                Term::Abs(ty, t1) => Term::Abs(ty.clone(), Box::new(walk(t1, z, c + 1))),
-                Term::App(t1, t2) => Term::App(Box::new(walk(t1, z, c)), Box::new(walk(t2, z, c))),
-                Term::Unit => Term::Unit,
-                Term::True => Term::True,
-                Term::False => Term::False,
-                Term::Zero => Term::Zero,
-                Term::Succ(t1) => Term::Succ(Box::new(walk(t1, z, c))),
-                Term::Pred(t1) => Term::Pred(Box::new(walk(t1, z, c))),
-                Term::IsZero(t1) => Term::IsZero(Box::new(walk(t1, z, c))),
-                Term::Record(fields) => {
-                    let fields = fields
-                        .iter()
-                        .map(|field| Field {
-                            label: field.label.clone(),
-                            term: walk(&field.term, z, c),
-                        })
-                        .collect();
-                    Term::Record(fields)
-                }
-                Term::Projection(t, label) => {
-                    Term::Projection(Box::new(walk(t, z, c)), label.clone())
-                }
-                Term::If(t1, t2, t3) => Term::If(
-                    Box::new(walk(t1, z, c)),
-                    Box::new(walk(t2, z, c)),
-                    Box::new(walk(t3, z, c)),
-                ),
-                Term::Let(t1, t2) => {
-                    let t1 = walk(t1, z, c);
-                    let t2 = walk(t2, z, c + 1);
-                    Term::Let(Box::new(t1), Box::new(t2))
-                }
-                Term::Plet(p, t1, t2) => {
-                    let n = p.len();
-                    let t1 = walk(t1, z, c + n);
-                    let t2 = walk(t2, z, c + n);
-                    Term::Plet(p.clone(), Box::new(t1), Box::new(t2))
-                }
-                Term::Tagging(_) => t.clone(),
-                Term::Case(t, bs) => Term::Case(
-                    Box::new(walk(t, z, c)),
-                    bs.iter()
-                        .map(|b| Arm {
-                            ptag: b.ptag.clone(),
-                            term: walk(&b.term, z, c + b.ptag.len()),
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-                Term::Fix(t1) => Term::Fix(Box::new(walk(t1, z, c))),
-            }
-        }
-        walk(self, zero_name, 0)
-    }
-    fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Term {
-        // todo: generalize to above?
-        match self {
-            Term::Var(_) => self.clone(),
-            Term::TmpVar(_) => self.clone(),
-            Term::Abs(ty, t1) => Term::Abs(
-                ty.subst_name(type_name, ty2),
-                Box::new(t1.subst_type_name(type_name, ty2)),
-            ),
-            Term::Unit => Term::Unit,
-            Term::True => Term::True,
-            Term::False => Term::False,
-            Term::Zero => Term::Zero,
-            Term::Succ(t1) => Term::Succ(Box::new(t1.subst_type_name(type_name, ty2))),
-            Term::Pred(t1) => Term::Pred(Box::new(t1.subst_type_name(type_name, ty2))),
-            Term::IsZero(t1) => Term::IsZero(Box::new(t1.subst_type_name(type_name, ty2))),
-            Term::App(t1, t2) => Term::App(
-                Box::new(t1.subst_type_name(type_name, ty2)),
-                Box::new(t2.subst_type_name(type_name, ty2)),
-            ),
-            Term::Record(fields) => Term::Record(
-                fields
-                    .iter()
-                    .map(|field| Field {
-                        label: field.label.clone(),
-                        term: field.term.subst_type_name(type_name, ty2),
-                    })
-                    .collect(),
-            ),
-            Term::Projection(t, label) => {
-                Term::Projection(Box::new(t.subst_type_name(type_name, ty2)), label.clone())
-            }
-            Term::If(t1, t2, t3) => Term::If(
-                Box::new(t1.subst_type_name(type_name, ty2)),
-                Box::new(t2.subst_type_name(type_name, ty2)),
-                Box::new(t3.subst_type_name(type_name, ty2)),
-            ),
-            Term::Let(t1, t2) => {
-                let t1 = t1.subst_type_name(type_name, ty2);
-                let t2 = t2.subst_type_name(type_name, ty2);
-                Term::Let(Box::new(t1), Box::new(t2))
-            }
-            Term::Plet(p, t1, t2) => {
-                let p = p.subst_type_name(type_name, ty2);
-                let t1 = t1.subst_type_name(type_name, ty2);
-                let t2 = t2.subst_type_name(type_name, ty2);
-                Term::Plet(p, Box::new(t1), Box::new(t2))
-            }
-            Term::Tagging(tag) => Term::Tagging(Tag {
-                ty: tag.ty.subst_name(type_name, ty2),
-                label: tag.label.clone(),
-            }),
-            Term::Case(t, bs) => Term::Case(
-                Box::new(t.subst_type_name(type_name, ty2)),
-                bs.iter()
-                    .map(|b| Arm {
-                        ptag: b.ptag.subst_type_name(type_name, ty2),
-                        term: b.term.subst_type_name(type_name, ty2),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Term::Fix(t1) => Term::Fix(Box::new(t1.subst_type_name(type_name, ty2))),
-        }
-    }
-    fn subst_ptag(&self, ptag: &PTmpTag, offset: usize) -> Result<(Term, PTmpTag, usize), &str> {
-        let t_renamed = ptag.nargs.iter().fold(self.clone(), |acc, arg| {
-            acc.shift(1)
-                .expect("plus shift does not fail")
-                .subst_name(arg)
-        });
-        let args_renamed = (0..ptag.nargs.len())
-            .rev()
-            .map(|i| (i + offset).to_string())
-            .collect();
-        let ptag_renamed = PTmpTag {
-            ty: ptag.ty.clone(),
-            label: ptag.label.clone(),
-            nargs: args_renamed,
-        };
-        Ok((t_renamed, ptag_renamed, ptag.nargs.len()))
-    }
-    fn subst_label(&self, from: &str, to: &str) -> Term {
-        match &self {
-            Term::Record(fs) => Term::Record(
-                fs.iter()
-                    .map(|f| Field {
-                        label: if f.label == from {
-                            to.to_string()
-                        } else {
-                            f.label.clone()
-                        },
-                        term: f.term.subst_label(from, to),
-                    })
-                    .collect(),
-            ),
-            _ => self.clone(),
-        }
-    }
-    fn subst_pat(
-        &self,
-        t1: &Term,
-        p: &Pattern,
-        offset: usize,
-    ) -> Result<(Term, Term, Pattern, usize), &str> {
-        match p {
-            Pattern::Var(name, ty) => {
-                let t = self.subst_name(name.as_str());
-                let p = Pattern::Var(offset.to_string(), ty.clone());
-                Ok((t, t1.clone(), p, 1))
-            }
-            Pattern::Record(pfs) => {
-                let mut n = pfs.iter().fold(0, |acc, pf| {
-                    acc + pf.pat.len()
-                        + if matches!(pf.pat, Pattern::Var(_, _)) {
-                            0
-                        } else {
-                            1
-                        }
-                });
-                // inside patterns
-                let (t_, t1_, pfs_r) = pfs.iter().enumerate().try_rfold(
-                    (self.clone(), t1.clone(), vec![]),
-                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
-                        Pattern::Var(label, ty) => {
-                            acc_pfs.push(PatField {
-                                label,
-                                pat: Pattern::Var((offset + i).to_string(), ty),
-                            });
-                            Ok((acc_t, acc_t1, acc_pfs))
-                        }
-                        _ => {
-                            let len = pf.pat.len();
-                            n -= len;
-                            let (acc_t_, acc_t1_, pi, ni) = acc_t
-                                .subst_pat(&acc_t1, &pf.pat, offset + n)
-                                .map_err(|_| "internal error: subst_pat")?;
-                            if ni != len {
-                                return Err("internal error: len check failed");
-                            }
-                            acc_pfs.push(PatField {
-                                label: pf.label.clone(),
-                                pat: pi,
-                            });
-                            Ok((acc_t_, acc_t1_, acc_pfs))
-                        }
-                    },
-                )?;
-                // 0..n patterns
-                let (t_, t1_, pfs_r) = pfs_r.iter().rev().enumerate().rfold(
-                    (t_, t1_, vec![]),
-                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
-                        Pattern::Var(name, _) => {
-                            acc_pfs.push(PatField {
-                                label: i.to_string(),
-                                pat: pf.pat.clone(),
-                            });
-                            (
-                                acc_t
-                                    .subst_name(name.as_str())
-                                    .shift(1)
-                                    .expect("plus shift does not fail"),
-                                acc_t1.subst_label(&pf.label, i.to_string().as_str()),
-                                acc_pfs,
-                            )
-                        }
-                        _ => {
-                            acc_pfs.push(PatField {
-                                label: i.to_string(),
-                                pat: pf.pat.clone(),
-                            });
-                            (
-                                acc_t
-                                    .subst_name(&pf.label)
-                                    .shift(1)
-                                    .expect("plus shift does not fail"),
-                                acc_t1.subst_label(&pf.label, i.to_string().as_str()),
-                                acc_pfs,
-                            )
-                        }
-                    },
-                );
-                let pfs_ = pfs_r.iter().rev().cloned().collect();
-
-                Ok((t_, t1_, Pattern::Record(pfs_), n))
-            }
-            Pattern::TmpTagging(pttag) => {
-                let (t, ptag, n) = self.subst_ptag(pttag, offset)?;
-                Ok((t, t1.clone(), Pattern::TmpTagging(ptag), n))
-            }
-        }
-    }
-}
-
-impl Type {
-    fn subst_name(&self, type_name: &str, ty2: &Type) -> Type {
-        match self {
-            Type::TyVar(s) => {
-                if type_name == s {
-                    ty2.clone()
-                } else {
-                    self.clone()
-                }
-            }
-            Type::TyRecord(tyfs) => Type::TyRecord(
-                tyfs.iter()
-                    .map(|tyf| TyField {
-                        label: tyf.label.clone(),
-                        ty: tyf.ty.subst_name(type_name, ty2),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Type::TyTagging(tyfs) => Type::TyTagging(
-                tyfs.iter()
-                    .map(|tyf| TyField {
-                        label: tyf.label.clone(),
-                        ty: tyf.ty.subst_name(type_name, ty2),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Type::Arr(ty1, ty2_) => Type::Arr(
-                Box::new(ty1.subst_name(type_name, ty2)),
-                Box::new(ty2_.subst_name(type_name, ty2)),
-            ),
-            Type::Nat => Type::Nat,
-            Type::Bool => Type::Bool,
-            Type::Unit => Type::Unit,
-            Type::TySelf => Type::TySelf,
-        }
-    }
-}
-
-impl PTmpTag {
-    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> PTmpTag {
-        PTmpTag {
-            ty: self.ty.subst_name(type_name, ty2),
-            label: self.label.clone(),
-            nargs: self.nargs.clone(),
-        }
-    }
-}
-
-impl Pattern {
-    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Pattern {
-        match self {
-            Pattern::Var(label, ty) => Pattern::Var(label.clone(), ty.subst_name(type_name, ty2)),
-            Pattern::Record(pfs) => Pattern::Record(
-                pfs.iter()
-                    .map(|pf| PatField {
-                        label: pf.label.clone(),
-                        pat: pf.pat.subst_type_name(type_name, ty2),
-                    })
-                    .collect(),
-            ),
-            Pattern::TmpTagging(ptag) => Pattern::TmpTagging(ptag.subst_type_name(type_name, ty2)),
-        }
-    }
-}
-
 /// <ident> ::= <ident> (alphabet|digit) | alphabet
-fn parse_ident(i: &str) -> IResult<&str, String> {
+fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
     let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
-    let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
+    let s = once(s0.fragment())
+        .chain(s.iter().map(|x| x.fragment()))
+        .fold("".to_string(), |acc, c| acc + c);
     if reserved_check(s.as_str()) {
-        Err(nom::Err::Error(nom::error::Error::new(
-            i,
-            nom::error::ErrorKind::Fail,
-        )))
+        Err(nom::Err::Error(ErrorWithPos {
+            message: format!("reserved word '{}' used as identifier", s),
+            level: 20,
+            kind: Some(nom::error::ErrorKind::Fail),
+            line: i.location_line(),
+            column: i.get_utf8_column(),
+        }))
     } else {
-        Ok((i, s))
+        Ok((
+            i,
+            Prg {
+                st: Spanned {
+                    v: s,
+                    start: start_pos.0,
+                    line: start_pos.1,
+                    column: start_pos.2,
+                },
+                lasterr: None,
+            },
+        ))
     }
 }
-fn parse_ident_reserved(i: &str) -> IResult<&str, String> {
-    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
-    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
-    let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
-    if reserved_check(s.as_str()) {
-        Ok((i, s))
-    } else {
-        Err(nom::Err::Error(nom::error::Error::new(
-            i,
-            nom::error::ErrorKind::Fail,
-        )))
+fn parse_reserved_span(
+    ident: &'static str,
+) -> impl Fn(Span) -> IResult<Span, Prg<()>, ErrorWithPos> {
+    move |i: Span| {
+        let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
+        let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
+
+        let parsed = once(s0.fragment())
+            .chain(s.iter().map(|x| x.fragment()))
+            .fold("".to_string(), |acc, c| acc + c);
+        if parsed != ident {
+            Err(nom::Err::Error(ErrorWithPos {
+                message: format!("expected ident '{}'", ident),
+                level: 20,
+                kind: Some(nom::error::ErrorKind::Fail),
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            }))
+        } else {
+            Ok((
+                i,
+                Prg {
+                    st: Spanned {
+                        v: (),
+                        start: s0.location_offset(),
+                        line: s0.location_line(),
+                        column: s0.get_utf8_column(),
+                    },
+                    lasterr: None,
+                },
+            ))
+        }
     }
 }
 
-fn parse_number(i: &str) -> IResult<&str, usize> {
-    map_res(digit1, |s: &str| s.parse::<usize>()).parse(i)
-}
-
-fn parse_number_tostring(i: &str) -> IResult<&str, String> {
-    map_res(digit1, |s: &str| s.parse::<usize>())
-        .map(|n| n.to_string())
-        .parse(i)
-}
-
-/// <labelorindex> ::= <label> | number
-fn parse_labelorindex(i: &str) -> IResult<&str, String> {
-    alt((
-        preceded(multispace0, parse_ident),
-        preceded(multispace0, parse_number_tostring),
-    ))
+fn parse_number_tostring(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
+    with_pos(map_res(digit1, |s: Span| {
+        s.fragment().parse::<usize>().map(|n| n.to_string())
+    }))
     .parse(i)
 }
 
+fn parse_labelorindex_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
+    alt((parse_ident_span, parse_number_tostring)).parse(i)
+}
+
 // <tyfield> ::= <label> ":" <ty> | <ty>
-fn parse_tyfield_tywithlabel(i: &str) -> IResult<&str, (Option<String>, Type)> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_tyfield_tywithlabel(i: Span) -> IResult<Span, (Option<String>, Prg<Type>), ErrorWithPos> {
+    let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
     let (i, _) = preceded(multispace0, char(':')).parse(i)?;
     let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
-    Ok((i, (Some(label), ty)))
+    Ok((i, (Some(label.st.v), ty)))
 }
-fn parse_tyfield_ty(i: &str) -> IResult<&str, (Option<String>, Type)> {
+fn parse_tyfield_ty(i: Span) -> IResult<Span, (Option<String>, Prg<Type>), ErrorWithPos> {
     let (i, ty) = parse_type_space.parse(i)?;
     Ok((i, (None, ty)))
 }
-fn parse_tyfield(i: &str) -> IResult<&str, (Option<String>, Type)> {
+fn parse_tyfield(i: Span) -> IResult<Span, (Option<String>, Prg<Type>), ErrorWithPos> {
     alt((parse_tyfield_tywithlabel, parse_tyfield_ty)).parse(i)
 }
-fn parse_tyfield_withcomma(i: &str) -> IResult<&str, (Option<String>, Type)> {
+fn parse_tyfield_withcomma(i: Span) -> IResult<Span, (Option<String>, Prg<Type>), ErrorWithPos> {
     let (i, p) = parse_tyfield.parse(i)?;
     let (i, _) = char(',').parse(i)?;
     Ok((i, p))
 }
-fn parse_tyfieldseq(i: &str) -> IResult<&str, Vec<TyField>> {
+fn parse_tyfieldseq(i: Span) -> IResult<Span, Vec<TyField>, ErrorWithPos> {
     let (i, fields) = many0(parse_tyfield_withcomma).parse(i)?;
     let (i, last_field) = opt(parse_tyfield).parse(i)?;
     let fields = fields
@@ -421,187 +133,302 @@ fn parse_tyfieldseq(i: &str) -> IResult<&str, Vec<TyField>> {
         .enumerate()
         .map(|(idx, (label, ty))| TyField {
             label: label.unwrap_or(idx.to_string()),
-            ty,
+            ty: ty.st,
         })
         .collect();
     Ok((i, fields))
 }
 
 /// <tyrecord> ::= "{" <tyinner> "}"
-fn parse_tyrecord(i: &str) -> IResult<&str, Type> {
-    let (i, fields) = delimited(
-        preceded(multispace0, char('{')),
-        preceded(multispace0, parse_tyfieldseq),
-        preceded(multispace0, char('}')),
-    )
-    .parse(i)?;
-    Ok((i, Type::TyRecord(fields)))
+fn parse_tyrecord(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = preceded(multispace0, char('{')).parse(i)?;
+    let (i, fields) = preceded(multispace0, parse_tyfieldseq).parse(i)?;
+    let (i, _) = preceded(multispace0, char('}')).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Type::TyRecord(fields),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: None,
+        },
+    ))
 }
 
 /// <tytagging>::= "<" <tyinner> ">"
-fn parse_tytagging(i: &str) -> IResult<&str, Type> {
-    let (i, fields) = delimited(
-        preceded(multispace0, char('<')),
-        preceded(multispace0, parse_tyfieldseq),
-        preceded(multispace0, char('>')),
-    )
-    .parse(i)?;
-    Ok((i, Type::TyTagging(fields)))
+fn parse_tytagging(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = preceded(multispace0, char('<')).parse(i)?;
+    let (i, fields) = preceded(multispace0, parse_tyfieldseq).parse(i)?;
+    let (i, _) = preceded(multispace0, char('>')).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Type::TyTagging(fields),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: None,
+        },
+    ))
 }
 
 /// <tyencl> ::= "(" <ty> ")"
-fn parse_tyencl(i: &str) -> IResult<&str, Type> {
-    delimited(char('('), parse_type_space, char(')')).parse(i)
+fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let (i, _) = char('(').parse(i)?;
+    let (i, t) = update_err("type expected", 20, parse_type_space).parse(i)?;
+
+    let lasterr_so_far = t.lasterr.clone();
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("')' expected", 50, with_pos(char(')'))),
+    )
+    .parse(i)?;
+    Ok((i, t))
 }
 
 /// <tyatom> ::= <tyencl> | <tyunit> | <tybool> | <tyvar> | <tyrecord> | <tytagging> | <tySelf>
-fn parse_tyatom(i: &str) -> IResult<&str, Type> {
+fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     preceded(
         multispace0,
         alt((
-            map(parse_reserved("Nat"), |_| Type::Nat),
-            map(parse_reserved("Bool"), |_| Type::Bool),
-            map(parse_reserved("Unit"), |_| Type::Unit),
-            map(parse_reserved("Self"), |_| Type::TySelf),
+            with_pos(map(tag("Nat"), |_| Type::Nat)),
+            with_pos(map(tag("Bool"), |_| Type::Bool)),
+            with_pos(map(tag("Unit"), |_| Type::Unit)),
+            with_pos(map(tag("Self"), |_| Type::TySelf)),
             parse_tytagging,
             parse_tyrecord,
             parse_tyencl,
-            map(parse_ident, Type::TyVar),
+            map(parse_ident_span, |ident| Prg {
+                st: Spanned {
+                    v: Type::TyVar(ident.st.v),
+                    start: ident.st.start,
+                    line: ident.st.line,
+                    column: ident.st.column,
+                },
+                lasterr: ident.lasterr,
+            }),
         )),
     )
     .parse(i)
 }
 
-fn parse_typrodsub(i: &str) -> IResult<&str, Type> {
+fn parse_typrodsub(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("*")).parse(i)?;
     preceded(multispace0, parse_typrod).parse(i)
 }
 /// <typrod> ::= <tyatom> "*" <typrod> | <tyatom>
 /// A*B => {0: A, 1: B}
-fn parse_typrod(i: &str) -> IResult<&str, Type> {
+fn parse_typrod(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, ty1) = preceded(multispace0, parse_tyatom).parse(i)?;
     let (i, tys) = many0(parse_typrodsub).parse(i)?;
     if tys.is_empty() {
         Ok((i, ty1))
     } else {
+        let start_pos = (ty1.st.start, ty1.st.line, ty1.st.column);
         Ok((
             i,
-            Type::TyRecord(
-                once(ty1)
-                    .chain(tys)
-                    .enumerate()
-                    .map(|(idx, ty)| TyField {
-                        label: idx.to_string(),
-                        ty,
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+            Prg {
+                st: Spanned {
+                    v: Type::TyRecord(
+                        once(ty1.st)
+                            .chain(tys.into_iter().map(|t| t.st))
+                            .enumerate()
+                            .map(|(idx, ty)| TyField {
+                                label: idx.to_string(),
+                                ty,
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    start: start_pos.0,
+                    line: start_pos.1,
+                    column: start_pos.2,
+                },
+                lasterr: ty1.lasterr,
+            },
         ))
     }
 }
 
 /// <tyarrsub> ::= "->" <tyarr>
-fn parse_tyarrsub(i: &str) -> IResult<&str, Type> {
+fn parse_tyarrsub(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
     preceded(multispace0, parse_tyarr).parse(i)
 }
 /// <tyarr> ::= <typrod> "->" <tyarr> | <typrod>
-fn parse_tyarr(i: &str) -> IResult<&str, Type> {
+fn parse_tyarr(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, tyatom) = preceded(multispace0, parse_typrod).parse(i)?;
     let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
-    let res = once(tyatom)
-        .chain(rest)
+    let start_pos = (tyatom.st.start, tyatom.st.line, tyatom.st.column);
+    let lasterr = tyatom.lasterr.clone();
+
+    let res = once(tyatom.st)
+        .chain(rest.into_iter().map(|t| t.st))
         .rev()
         .fold(None, |acc, ty| match acc {
-            None => Some(ty),
-            Some(acc) => Some(Type::Arr(Box::new(ty), Box::new(acc))),
+            None => Some(ty.v),
+            Some(acc) => Some(Type::Arr(
+                Box::new(ty.clone()),
+                Box::new(Spanned {
+                    v: acc,
+                    start: ty.start,
+                    line: ty.line,
+                    column: ty.column,
+                }),
+            )),
         })
         .expect("expected Some because of once");
-    Ok((i, res))
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: res,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr,
+        },
+    ))
 }
 
 /// <tyvariant> ::= <tyvariant> <tyarr> | <label>
-fn parse_tyvariant(i: &str) -> IResult<&str, TyField> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_tyvariant(i: Span) -> IResult<Span, TyField, ErrorWithPos> {
+    let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
     let (i, args) = many0(preceded(multispace0, parse_tyarr)).parse(i)?;
+    let start_pos = if args.is_empty() {
+        (i.location_offset(), i.location_line(), i.get_utf8_column())
+    } else {
+        (args[0].st.start, args[0].st.line, args[0].st.column)
+    };
     let ty = args.iter().fold(Type::TySelf, |acc, ty| {
-        Type::Arr(Box::new(ty.clone()), Box::new(acc))
+        Type::Arr(
+            Box::new(ty.st.clone()),
+            Box::new(Spanned {
+                v: acc,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            }),
+        )
     });
-    Ok((i, TyField { label, ty }))
+    Ok((
+        i,
+        TyField {
+            label: label.st.v,
+            ty: Spanned {
+                v: ty,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+        },
+    ))
 }
-fn parse_tysumsub(i: &str) -> IResult<&str, TyField> {
+fn parse_tysumsub(i: Span) -> IResult<Span, TyField, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("+")).parse(i)?;
     preceded(multispace0, parse_tyvariant).parse(i)
 }
 /// <tysum> ::= <tyvariant> "+" <tysum> | <tyvariant> "+" <tyvariant>
-fn parse_tysum(i: &str) -> IResult<&str, Type> {
+fn parse_tysum(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, tyf1) = parse_tyvariant.parse(i)?;
-    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty {
+    let (i, tyfs) = if let Type::Arr(_, _) = &tyf1.ty.v {
         many0(parse_tysumsub).parse(i)?
     } else {
         many1(parse_tysumsub).parse(i)?
     };
     Ok((
         i,
-        Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
+        Prg {
+            st: Spanned {
+                v: Type::TyTagging(once(tyf1).chain(tyfs).collect::<Vec<_>>()),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: None,
+        },
     ))
 }
 
 /// <tysumorarr> ::= <tysum> | <tyarr>
-fn parse_tysumorarr(i: &str) -> IResult<&str, Type> {
+fn parse_tysumorarr(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     alt((parse_tysum, parse_tyarr)).parse(i)
 }
 
 /// <ty> ::= <tysum>
-fn parse_type(i: &str) -> IResult<&str, Type> {
+fn parse_type(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     parse_tysumorarr.parse(i)
 }
 
-fn parse_type_space(i: &str) -> IResult<&str, Type> {
+fn parse_type_space(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, ty) = parse_type.parse(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, ty))
 }
 
 /// <pattagging> ::= <ty> ":::" <parse_labelorindexcase <Bool, Unit>:::0 true of | <Bool, Unit>:::0 b:Bool => true | <Bool, Unit>:::1 u:Unit => false> | <pattagging> <pat>
-fn parse_pattagging_args(i: &str) -> IResult<&str, PTmpTag> {
+fn parse_pattagging_args(i: Span) -> IResult<Span, Prg<PTmpTag>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
     let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
-    let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
-    let (i, args) = many0(preceded(multispace0, parse_ident)).parse(i)?;
+    let (i, label) = preceded(multispace0, parse_labelorindex_span).parse(i)?;
+    let (i, args) = many0(preceded(multispace0, parse_ident_span)).parse(i)?;
+    let args_values: Vec<String> = args.into_iter().map(|arg| arg.st.v).collect();
     Ok((
         i,
-        PTmpTag {
-            ty,
-            label,
-            nargs: args,
+        Prg {
+            st: Spanned {
+                v: PTmpTag {
+                    ty: ty.st.v,
+                    label: label.st.v,
+                    nargs: args_values,
+                },
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: ty.lasterr.or(label.lasterr),
         },
     ))
 }
 
 /// <patfield> ::= <label> ":" <pat> | <pat>
-fn parse_patfield_patwithlabel(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_patfield_patwithlabel(
+    i: Span,
+) -> IResult<Span, (Option<String>, Prg<Pattern>), ErrorWithPos> {
+    let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
     let (i, _) = preceded(multispace0, char(':')).parse(i)?;
     let (i, pat) = preceded(multispace0, parse_pat).parse(i)?;
-    Ok((i, (Some(label), pat)))
+    Ok((i, (Some(label.st.v), pat)))
 }
-fn parse_patfield_pat(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+fn parse_patfield_pat(i: Span) -> IResult<Span, (Option<String>, Prg<Pattern>), ErrorWithPos> {
     let (i, pat) = parse_pat.parse(i)?;
     Ok((i, (None, pat)))
 }
-fn parse_patfield(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+fn parse_patfield(i: Span) -> IResult<Span, (Option<String>, Prg<Pattern>), ErrorWithPos> {
     alt((parse_patfield_patwithlabel, parse_patfield_pat)).parse(i)
 }
-fn parse_patfield_withcomma(i: &str) -> IResult<&str, (Option<String>, Pattern)> {
+fn parse_patfield_withcomma(
+    i: Span,
+) -> IResult<Span, (Option<String>, Prg<Pattern>), ErrorWithPos> {
     let (i, p) = parse_patfield.parse(i)?;
     let (i, _) = char(',').parse(i)?;
     Ok((i, p))
 }
 
 /// <patfieldseq> ::= <patfield> "," <patfieldseq> | null
-fn parse_patfieldseq(i: &str) -> IResult<&str, Vec<PatField>> {
+fn parse_patfieldseq(i: Span) -> IResult<Span, Prg<Vec<PatField>>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, fields) = many0(parse_patfield_withcomma).parse(i)?;
     let (i, last_field) = opt(parse_patfield).parse(i)?;
     let pfs = fields
@@ -610,38 +437,78 @@ fn parse_patfieldseq(i: &str) -> IResult<&str, Vec<PatField>> {
         .enumerate()
         .map(|(idx, (label, pat))| PatField {
             label: label.unwrap_or(idx.to_string()),
-            pat,
+            pat: pat.st.v,
         })
         .collect();
-    Ok((i, pfs))
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: pfs,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: None,
+        },
+    ))
 }
 
 /// <patrecord> ::= "{" <patinner> "}"
-fn parse_patrecord(i: &str) -> IResult<&str, Pattern> {
-    let (i, fields) = delimited(
-        preceded(multispace0, char('{')),
-        preceded(multispace0, parse_patfieldseq),
-        preceded(multispace0, char('}')),
-    )
-    .parse(i)?;
-    Ok((i, Pattern::Record(fields)))
+fn parse_patrecord(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = preceded(multispace0, char('{')).parse(i)?;
+    let (i, fields) = preceded(multispace0, parse_patfieldseq).parse(i)?;
+    let (i, _) = preceded(multispace0, char('}')).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Pattern::Record(fields.st.v),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: fields.lasterr,
+        },
+    ))
 }
 
 /// <patvar> ::= <bound> ":" <ty>
-fn parse_patvar(i: &str) -> IResult<&str, Pattern> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_patvar(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
     let (i, _) = preceded(multispace0, char(':')).parse(i)?;
     let (i, ty) = preceded(multispace0, parse_type).parse(i)?;
-    Ok((i, Pattern::Var(label, ty)))
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Pattern::Var(label.st.v, ty.st.v),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: label.lasterr.or(ty.lasterr),
+        },
+    ))
 }
 
 /// <pat> ::= <patvar> | <patrecord> | <pattagging>
-fn parse_pat(i: &str) -> IResult<&str, Pattern> {
+fn parse_pat(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
     preceded(
         multispace0,
         alt((
             parse_patvar,
-            parse_pattagging_args.map(Pattern::TmpTagging),
+            map(parse_pattagging_args, |ptag| Prg {
+                st: Spanned {
+                    v: Pattern::TmpTagging(ptag.st.v),
+                    start: ptag.st.start,
+                    line: ptag.st.line,
+                    column: ptag.st.column,
+                },
+                lasterr: ptag.lasterr,
+            }),
             parse_patrecord,
         )),
     )
@@ -649,105 +516,147 @@ fn parse_pat(i: &str) -> IResult<&str, Pattern> {
 }
 
 /// <zero> ::= "zero"
-fn parse_zero(i: &str) -> IResult<&str, Term> {
-    let (i, _) = parse_reserved("zero").parse(i)?;
-    Ok((i, Term::Zero))
+fn parse_zero(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    with_pos(map(parse_reserved_span("zero"), |_| Term::Zero)).parse(i)
 }
 
 /// <false> ::= "false"
-fn parse_false(i: &str) -> IResult<&str, Term> {
-    map(parse_reserved("false"), |_| Term::False).parse(i)
+fn parse_false(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    with_pos(map(parse_reserved_span("false"), |_| Term::False)).parse(i)
 }
 
 /// <true> ::= "true"
-fn parse_true(i: &str) -> IResult<&str, Term> {
-    map(parse_reserved("true"), |_| Term::True).parse(i)
+fn parse_true(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    with_pos(map(parse_reserved_span("true"), |_| Term::True)).parse(i)
 }
 
 // <unit> ::= "unit"
-fn parse_unit(i: &str) -> IResult<&str, Term> {
-    map(parse_reserved("unit"), |_| Term::Unit).parse(i)
+fn parse_unit(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    with_pos(map(parse_reserved_span("unit"), |_| Term::Unit)).parse(i)
 }
 
 // <var> ::= number | string
-fn parse_varnum(i: &str) -> IResult<&str, Term> {
-    map(parse_number, Term::Var).parse(i)
+fn parse_varnum(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (_i, _check) = alphanumeric1.parse(i)?;
+    with_pos(map_res(digit1, |s: Span| {
+        s.fragment().parse::<usize>().map(Term::Var)
+    }))
+    .parse(i)
 }
-fn parse_varstr(i: &str) -> IResult<&str, Term> {
-    let (i, s) = parse_ident.parse(i)?;
-    Ok((i, Term::TmpVar(s)))
+fn parse_varstr(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, s) = parse_ident_span(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::TmpVar(s.st.v),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: s.lasterr,
+        },
+    ))
 }
 /// <var> ::= number | string
-fn parse_var(i: &str) -> IResult<&str, Term> {
-    let (i, v) = preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)?;
-    Ok((i, v))
+fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)
 }
 
 /// <succ> ::= "succ" <term>
-fn parse_succ(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("succ")).parse(i)?;
-    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::Succ(Box::new(t))))
+fn parse_succ(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("succ").parse(i)?;
+    let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::Succ(Box::new(t.st)),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: t.lasterr,
+        },
+    ))
 }
 
 /// <pred> ::= "pred" <term>
-fn parse_pred(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("pred")).parse(i)?;
-    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::Pred(Box::new(t))))
-}
-
-fn parse_reserved(ident: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
-    move |i: &str| {
-        let (i, s) = preceded(multispace0, parse_ident_reserved).parse(i)?;
-        if s != ident {
-            Err(nom::Err::Error(nom::error::Error::new(
-                i,
-                nom::error::ErrorKind::Fail,
-            )))
-        } else {
-            Ok((i, ()))
-        }
-    }
+fn parse_pred(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("pred").parse(i)?;
+    let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::Pred(Box::new(t.st)),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: t.lasterr,
+        },
+    ))
 }
 
 /// <iszero> ::= "iszero" <term>
-fn parse_iszero(i: &str) -> IResult<&str, Term> {
-    let (i, _) = parse_reserved("iszero").parse(i)?;
-    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::IsZero(Box::new(t))))
+fn parse_iszero(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("iszero").parse(i)?;
+    let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::IsZero(Box::new(t.st)),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: t.lasterr,
+        },
+    ))
 }
 
 /// <tagging> ::= <ty> ":::" <labelorindex>
-fn parse_tagging(i: &str) -> IResult<&str, Tag> {
+fn parse_tagging(i: Span) -> IResult<Span, Tag, ErrorWithPos> {
     let (i, ty) = preceded(multispace0, parse_tyatom).parse(i)?;
     let (i, _) = preceded(multispace0, tag(":::")).parse(i)?;
-    let (i, label) = preceded(multispace0, parse_labelorindex).parse(i)?;
-    Ok((i, Tag { ty, label }))
+    let (i, label) = preceded(multispace0, parse_labelorindex_span).parse(i)?;
+    Ok((
+        i,
+        Tag {
+            ty: ty.st.v,
+            label: label.st.v,
+        },
+    ))
 }
 
 /// <field> ::= <label> "=" <term> | <term>
-fn parse_field_twithlabel(i: &str) -> IResult<&str, (Option<String>, Term)> {
-    let (i, label) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_field_twithlabel(i: Span) -> IResult<Span, (Option<String>, Prg<Term>), ErrorWithPos> {
+    let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
     let (i, _) = preceded(multispace0, char('=')).parse(i)?;
     let (i, term) = preceded(multispace0, parse_term_space).parse(i)?;
-    Ok((i, (Some(label), term)))
+    Ok((i, (Some(label.st.v), term)))
 }
-fn parse_field_t(i: &str) -> IResult<&str, (Option<String>, Term)> {
+fn parse_field_t(i: Span) -> IResult<Span, (Option<String>, Prg<Term>), ErrorWithPos> {
     let (i, t) = parse_term_space.parse(i)?;
     Ok((i, (None, t)))
 }
-fn parse_field(i: &str) -> IResult<&str, (Option<String>, Term)> {
+fn parse_field(i: Span) -> IResult<Span, (Option<String>, Prg<Term>), ErrorWithPos> {
     alt((parse_field_twithlabel, parse_field_t)).parse(i)
 }
-fn parse_field_withcomma(i: &str) -> IResult<&str, (Option<String>, Term)> {
+fn parse_field_withcomma(i: Span) -> IResult<Span, (Option<String>, Prg<Term>), ErrorWithPos> {
     let (i, p) = parse_field.parse(i)?;
     let (i, _) = char(',').parse(i)?;
     Ok((i, p))
 }
 
 // <fieldseq> ::= <field> "," <fieldseq> | null
-fn parse_fieldseq(i: &str) -> IResult<&str, Vec<Field>> {
+fn parse_fieldseq(i: Span) -> IResult<Span, Vec<Field>, ErrorWithPos> {
     let (i, fields) = many0(parse_field_withcomma).parse(i)?;
     let (i, last_field) = opt(parse_field).parse(i)?;
     let fields = fields
@@ -756,162 +665,508 @@ fn parse_fieldseq(i: &str) -> IResult<&str, Vec<Field>> {
         .enumerate()
         .map(|(idx, (label, term))| Field {
             label: label.unwrap_or(idx.to_string()),
-            term,
+            term: term.st,
         })
         .collect();
     Ok((i, fields))
 }
 
 // <record> ::= "{" <inner> "}"
-fn parse_record(i: &str) -> IResult<&str, Term> {
-    let (i, fields) = delimited(
-        preceded(multispace0, char('{')),
-        preceded(multispace0, parse_fieldseq),
-        preceded(multispace0, char('}')),
-    )
-    .parse(i)?;
-    Ok((i, Term::Record(fields)))
-}
-
-fn parse_plet(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("let")).parse(i)?;
-    let (i, p) = preceded(multispace0, parse_pat).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
-    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
-    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let (t2_renamed, t1_renamed, p_renamed, _n) = t2.subst_pat(&t1, &p, 0).map_err(|e| {
-        println!("subst_pat: {}", e);
-        nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
-    })?;
+fn parse_record(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = preceded(multispace0, char('{')).parse(i)?;
+    let (i, fields) = preceded(multispace0, parse_fieldseq).parse(i)?;
+    let (i, _) = preceded(multispace0, char('}')).parse(i)?;
     Ok((
         i,
-        Term::Plet(p_renamed, Box::new(t1_renamed), Box::new(t2_renamed)),
+        Prg {
+            st: Spanned {
+                v: Term::Record(fields),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: None,
+        },
+    ))
+}
+
+fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("let").parse(i)?;
+    let (i, p) = update_err("pattern expected", 20, preceded(multispace0, parse_pat)).parse(i)?;
+    let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
+    let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = p.lasterr.or(t1.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
+
+    let (t2_renamed, t1_renamed, p_renamed, _n) =
+        t2.st.v.subst_pat(&t1.st.v, &p.st.v, 0).map_err(|e| {
+            nom::Err::Error(ErrorWithPos {
+                message: format!("subst_pat: {}", e),
+                level: 90,
+                kind: Some(nom::error::ErrorKind::Fail),
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            })
+        })?;
+
+    // Create a spanned version of t2_renamed that preserves position information
+    // We need to map the renamed term back to the original structure with positions
+    fn preserve_positions(original: &Spanned<Term>, renamed: &Term) -> Spanned<Term> {
+        use crate::span::Spanned;
+
+        match (&original.v, renamed) {
+            (Term::TmpVar(_), Term::Var(_)) => {
+                // This is a variable that was renamed, preserve its position
+                Spanned {
+                    v: renamed.clone(),
+                    start: original.start,
+                    line: original.line,
+                    column: original.column,
+                }
+            }
+            (Term::App(o1, o2), Term::App(r1, r2)) => Spanned {
+                v: Term::App(
+                    Box::new(preserve_positions(o1, &r1.v)),
+                    Box::new(preserve_positions(o2, &r2.v)),
+                ),
+                start: original.start,
+                line: original.line,
+                column: original.column,
+            },
+            _ => {
+                // For other cases, just use the original position with renamed content
+                Spanned {
+                    v: renamed.clone(),
+                    start: original.start,
+                    line: original.line,
+                    column: original.column,
+                }
+            }
+        }
+    }
+
+    let t2_spanned = preserve_positions(&t2.st, &t2_renamed);
+
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::Plet(
+                    Spanned {
+                        v: p_renamed,
+                        start: p.st.start,
+                        line: p.st.line,
+                        column: p.st.column,
+                    },
+                    Box::new(Spanned {
+                        v: t1_renamed,
+                        start: t1.st.start,
+                        line: t1.st.line,
+                        column: t1.st.column,
+                    }),
+                    Box::new(t2_spanned),
+                ),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: lasterr_so_far.or(t1.lasterr).or(t2.lasterr),
+        },
     ))
 }
 
 /// <let> ::= "let" <bound> "=" <term> "in" <term>
-fn parse_let(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("let")).parse(i)?;
-    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("let").parse(i)?;
+    let (i, name) = update_err(
+        "identifier expected",
+        50,
+        preceded(multispace0, parse_ident_span),
+    )
+    .parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
-    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
-    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let renamed = t2.subst_name(name.as_str());
-    Ok((i, Term::Let(Box::new(t1), Box::new(renamed))))
+    let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = name.lasterr.or(t1.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
+
+    let renamed = t2.st.v.subst_name_spanned(name.st.v.as_str(), &t2.st);
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::Let(Box::new(t1.st), Box::new(renamed)),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: lasterr_so_far.or(t1.lasterr).or(t2.lasterr),
+        },
+    ))
 }
 
 /// <if> ::= "if" <term> "then" <term> "else" <term>
-fn parse_if(i: &str) -> IResult<&str, Term> {
-    let (i, t1) = preceded(parse_reserved("if"), parse_term).parse(i)?;
-    let (i, _) = multispace0(i)?;
-    let (i, t2) = preceded(parse_reserved("then"), parse_term).parse(i)?;
-    let (i, _) = multispace0(i)?;
-    let (i, t3) = preceded(parse_reserved("else"), parse_term).parse(i)?;
-    Ok((i, Term::If(Box::new(t1), Box::new(t2), Box::new(t3))))
+fn parse_if(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("if").parse(i)?;
+    let (i, t1) =
+        update_err("condition expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    let lasterr_so_far = t1.lasterr.clone();
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'then' expected", 60, parse_reserved_span("then")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err(
+            "then branch expected",
+            20,
+            preceded(multispace0, parse_term),
+        ),
+    )
+    .parse(i)?;
+
+    let lasterr_so_far = lasterr_so_far.or(t2.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'else' expected", 60, parse_reserved_span("else")),
+    )
+    .parse(i)?;
+    let (i, t3) = chmax_err(
+        &lasterr_so_far,
+        update_err(
+            "else branch expected",
+            20,
+            preceded(multispace0, parse_term),
+        ),
+    )
+    .parse(i)?;
+
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::If(Box::new(t1.st), Box::new(t2.st), Box::new(t3.st)),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: lasterr_so_far.or(t3.lasterr),
+        },
+    ))
 }
 
-fn parse_arm(i: &str) -> IResult<&str, Arm> {
+fn parse_arm(i: Span) -> IResult<Span, Prg<Arm>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(multispace0, char('|')).parse(i)?;
     let (i, ptag) = preceded(multispace0, parse_pattagging_args)
         .parse(i)
-        .inspect_err(|_| {
-            println!("Error parsing case arm: expected <type>:::<label> <args...>");
+        .map_err(|_| {
+            nom::Err::Error(ErrorWithPos {
+                message: "Error parsing case arm: expected <type>:::<label> <args...>".to_string(),
+                level: 90,
+                kind: Some(nom::error::ErrorKind::Fail),
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            })
         })?;
     let (i, _) = preceded(multispace0, tag("=>")).parse(i)?;
     let (i, t) = preceded(multispace0, parse_term).parse(i)?;
 
-    let (t_renamed, ptag_renamed, _) = t.subst_ptag(&ptag, 0).map_err(|e| {
-        println!("subst_ptag: {}", e);
-        nom::Err::Error(nom::error::Error::new(i, nom::error::ErrorKind::Fail))
+    let (t_renamed, ptag_renamed, _) = t.st.v.subst_ptag(&ptag.st.v, 0).map_err(|e| {
+        nom::Err::Error(ErrorWithPos {
+            message: format!("subst_ptag: {}", e),
+            level: 90,
+            kind: Some(nom::error::ErrorKind::Fail),
+            line: i.location_line(),
+            column: i.get_utf8_column(),
+        })
     })?;
     Ok((
         i,
-        Arm {
-            term: t_renamed,
-            ptag: ptag_renamed,
+        Prg {
+            st: Spanned {
+                v: Arm {
+                    term: Spanned {
+                        v: t_renamed,
+                        start: t.st.start,
+                        line: t.st.line,
+                        column: t.st.column,
+                    },
+                    ptag: ptag_renamed,
+                    ptag_pos: (ptag.st.line, ptag.st.column),
+                },
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: ptag.lasterr.or(t.lasterr),
         },
     ))
 }
 /// <arms> ::= "|" <pat> "=>" <term> <arms> | null
-fn parse_arms(i: &str) -> IResult<&str, Vec<Arm>> {
-    many1(parse_arm).parse(i)
+fn parse_arms(i: Span) -> IResult<Span, Prg<Vec<Arm>>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, arms) = many1(parse_arm).parse(i)?;
+    let arms_values: Vec<Arm> = arms.into_iter().map(|arm| arm.st.v).collect();
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: arms_values,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: None,
+        },
+    ))
 }
 
 // <case> ::= "case" <term> "of" <arms>
-fn parse_case(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("case")).parse(i)?;
-    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, parse_reserved("of")).parse(i)?;
-    let (i, arms) = preceded(multispace0, parse_arms).parse(i)?;
-    Ok((i, Term::Case(Box::new(t), arms)))
+fn parse_case(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("case").parse(i)?;
+    let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = t.lasterr.clone();
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'of' expected", 60, parse_reserved_span("of")),
+    )
+    .parse(i)?;
+    let (i, arms) = chmax_err(
+        &lasterr_so_far,
+        append_err(
+            "case arms expected: ",
+            60,
+            preceded(multispace0, parse_arms),
+        ),
+    )
+    .parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::Case(Box::new(t.st), arms.st.v),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: lasterr_so_far.or(arms.lasterr),
+        },
+    ))
 }
 
 /// <lettype> ::= "type" <ident> "=" <type> "in" <term>
-fn parse_lettype(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("type")).parse(i)?;
-    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (i, _) = parse_reserved_span("type").parse(i)?;
+    let (i, name) = update_err(
+        "identifier expected",
+        20,
+        preceded(multispace0, parse_ident_span),
+    )
+    .parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
-    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
-    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
-    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    let renamed = t.subst_type_name(name.as_str(), &ty);
-    Ok((i, renamed))
+    let (i, ty) =
+        update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = name.lasterr.clone();
+    let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
+    let renamed =
+        t.st.v
+            .subst_type_name_spanned(name.st.v.as_str(), &ty.st.v, &t.st);
+    Ok((
+        i,
+        Prg {
+            st: renamed,
+            lasterr: name.lasterr.or(ty.lasterr).or(t.lasterr),
+        },
+    ))
 }
 
 /// <fix> ::= "fix" <term>
-fn parse_fix(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("fix")).parse(i)?;
-    let (i, t) = preceded(multispace0, parse_term).parse(i)?;
-    Ok((i, Term::Fix(Box::new(t))))
+fn parse_fix(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("fix").parse(i)?;
+    let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::Fix(Box::new(t.st)),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: t.lasterr,
+        },
+    ))
 }
 
 /// <letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
-fn parse_letrec(i: &str) -> IResult<&str, Term> {
-    let (i, _) = preceded(multispace0, parse_reserved("letrec")).parse(i)?;
-    let (i, name) = preceded(multispace0, parse_ident).parse(i)?;
+fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, _) = parse_reserved_span("letrec").parse(i)?;
+    let (i, name) = update_err(
+        "identifier expected",
+        20,
+        preceded(multispace0, parse_ident_span),
+    )
+    .parse(i)?;
     let (i, _) = preceded(multispace0, char(':')).parse(i)?;
-    let (i, ty) = preceded(multispace0, parse_type_space).parse(i)?;
+    let (i, ty) =
+        update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
-    let (i, t1) = preceded(multispace0, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, parse_reserved("in")).parse(i)?;
-    let (i, t2) = preceded(multispace0, parse_term).parse(i)?;
-    let t1_renamed = t1.subst_name(name.as_str());
-    let t2_renamed = t2.subst_name(name.as_str());
+    let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = name.lasterr.clone();
+    let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
+    let lasterr_so_far = lasterr_so_far.or(t1.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
+    let t1_renamed = t1.st.v.subst_name_spanned(name.st.v.as_str(), &t1.st);
+    let t2_renamed = t2.st.v.subst_name_spanned(name.st.v.as_str(), &t2.st);
     Ok((
         i,
-        Term::Let(
-            Box::new(Term::Fix(Box::new(Term::Abs(ty, Box::new(t1_renamed))))),
-            Box::new(t2_renamed),
-        ),
+        Prg {
+            st: Spanned {
+                v: Term::Let(
+                    Box::new(Spanned {
+                        v: Term::Fix(Box::new(Spanned {
+                            v: Term::Abs(ty.st.v, Box::new(t1_renamed)),
+                            start: ty.st.start,
+                            line: ty.st.line,
+                            column: ty.st.column,
+                        })),
+                        start: ty.st.start,
+                        line: ty.st.line,
+                        column: ty.st.column,
+                    }),
+                    Box::new(t2_renamed),
+                ),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: name.lasterr.or(ty.lasterr).or(t1.lasterr).or(t2.lasterr),
+        },
     ))
 }
 
 /// <abs> ::= "\:" <ty> "." <term> | "\" <bound> ":" <ty> "." <term>
-fn parse_abs(i: &str) -> IResult<&str, Term> {
+fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
-    let (i, name) = opt(parse_ident).parse(i)?;
+    let (i, name) = opt(parse_ident_span).parse(i)?;
     let (i, _) = preceded(preceded(multispace0, char(':')), multispace0).parse(i)?;
-    let (i, ty) = parse_type_space(i)?;
-    let (i, t) = preceded(char('.'), parse_term).parse(i)?;
+    let (i, ty) = update_err("type expected", 20, parse_type_space).parse(i)?;
 
-    match name {
+    let lasterr_so_far = name
+        .as_ref()
+        .and_then(|n| n.lasterr.clone())
+        .or(ty.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'.' expected", 50, with_pos(char('.'))),
+    )
+    .parse(i)?;
+    let (i, t) =
+        chmax_err(&lasterr_so_far, update_err("term expected", 20, parse_term)).parse(i)?;
+
+    let result = match name.clone() {
         Some(name) => {
-            let renamed = t.subst_name(&name);
-            Ok((i, Term::Abs(ty, Box::new(renamed))))
+            let renamed = t.st.v.subst_name_spanned(&name.st.v, &t.st);
+            Term::Abs(ty.st.v, Box::new(renamed))
         }
-        None => Ok((i, Term::Abs(ty, Box::new(t)))),
-    }
+        None => Term::Abs(ty.st.v, Box::new(t.st)),
+    };
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: result,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: lasterr_so_far.or(t.lasterr),
+        },
+    ))
 }
 
 /// <encl> ::= "(" <term> ")"
-fn parse_encl(i: &str) -> IResult<&str, Term> {
-    delimited(char('('), parse_term_space, char(')')).parse(i)
+fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let (i, _) = char('(').parse(i)?;
+    let (i, t) = update_err("term expected", 20, parse_term_space).parse(i)?;
+
+    let lasterr_so_far = t.lasterr.clone();
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("')' expected", 50, with_pos(char(')'))),
+    )
+    .parse(i)?;
+    Ok((i, t))
 }
 
 /// <atom> ::= <encl> | <abs> | <if> | <let> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
-fn parse_atom(i: &str) -> IResult<&str, Term> {
+fn parse_atom(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     preceded(
         multispace0,
         alt((
@@ -919,312 +1174,684 @@ fn parse_atom(i: &str) -> IResult<&str, Term> {
             parse_fix,
             parse_lettype,
             parse_case,
-            parse_plet,
-            parse_let,
+            parse_plet, // "let" pattern-based let
+            parse_let,  // "let" simple let
             parse_if,
             parse_succ,
             parse_pred,
             parse_iszero,
-            parse_tagging.map(Term::Tagging),
+            with_pos(map(parse_tagging, Term::Tagging)),
             parse_record,
             parse_zero,
             parse_false,
             parse_true,
             parse_unit,
             parse_abs,
-            parse_var,
             parse_encl,
+            parse_var, // Must be last to avoid conflicting with reserved words
         )),
     )
     .parse(i)
 }
 
 // <projection> ::= "." <labelorindex>
-fn parse_projection(i: &str) -> IResult<&str, String> {
-    preceded(
+fn parse_projection(i: Span) -> IResult<Span, String, ErrorWithPos> {
+    let (i, label) = preceded(
         multispace0,
-        preceded(preceded(char('.'), multispace0), parse_labelorindex),
+        preceded(preceded(char('.'), multispace0), parse_labelorindex_span),
     )
-    .parse(i)
+    .parse(i)?;
+    Ok((i, label.st.v))
 }
 
 // <postfix> ::= <atom> <projection> | <atom>
-fn parse_postfix(i: &str) -> IResult<&str, Term> {
+fn parse_postfix(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, first) = parse_atom.parse(i)?;
     let (i, rest) = many0(parse_projection).parse(i)?;
-    let t = rest
-        .into_iter()
-        .fold(first, |acc, label| Term::Projection(Box::new(acc), label));
-    Ok((i, t))
+    let lasterr = first.lasterr.clone();
+    let t = rest.into_iter().fold(first.st, |acc, label| Spanned {
+        v: Term::Projection(Box::new(acc.clone()), label),
+        start: acc.start,
+        line: acc.line,
+        column: acc.column,
+    });
+    Ok((i, Prg { st: t, lasterr }))
 }
 
 // <app> ::= <postfix> <app> | <postfix>
-fn parse_app(i: &str) -> IResult<&str, Term> {
+fn parse_app(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, first) = parse_postfix.parse(i)?;
     let (i, rest) = many0(parse_postfix).parse(i)?;
-    let t = rest
-        .into_iter()
-        .fold(first, |acc, t| Term::App(Box::new(acc), Box::new(t)));
-    Ok((i, t))
+    if let Err(lasterr) = parse_postfix.parse(i) {
+        match lasterr {
+            nom::Err::Error(lasterr) => {
+                let st = rest.into_iter().fold(first.st, |acc, arg| Spanned {
+                    start: acc.start,
+                    line: acc.line,
+                    column: acc.column,
+                    v: Term::App(Box::new(acc), Box::new(arg.st)),
+                });
+                Ok((
+                    i,
+                    Prg {
+                        st,
+                        lasterr: Some(lasterr),
+                    },
+                ))
+            }
+            e => Err(nom::Err::Error(ErrorWithPos {
+                message: format!("internal error: {}", e),
+                level: 100,
+                kind: None,
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            })),
+        }
+    } else {
+        Err(nom::Err::Error(ErrorWithPos {
+            message: "internal error: many0 did not take it to the end".to_string(),
+            level: 100,
+            kind: None,
+            line: i.location_line(),
+            column: i.get_utf8_column(),
+        }))
+    }
 }
 
 // <seq> ::= <app> ";" <seq> | <app>
-fn parse_seq(i: &str) -> IResult<&str, Term> {
+fn parse_seq(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, first) = parse_app.parse(i)?;
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
-    let t = rest.into_iter().fold(first, |acc, t| {
-        Term::App(
-            Box::new(Term::Abs(Type::Unit, Box::new(t.shift(1).unwrap_or(t)))),
-            Box::new(acc),
-        )
+    let lasterr = first.lasterr.clone();
+    let t = rest.into_iter().fold(first.st, |acc, t| Spanned {
+        v: Term::App(
+            Box::new(Spanned {
+                v: Term::Abs(
+                    Type::Unit,
+                    Box::new(Spanned {
+                        v: t.st.v.shift(1).unwrap_or(t.st.v),
+                        start: t.st.start,
+                        line: t.st.line,
+                        column: t.st.column,
+                    }),
+                ),
+                start: acc.start,
+                line: acc.line,
+                column: acc.column,
+            }),
+            Box::new(acc.clone()),
+        ),
+        start: acc.start,
+        line: acc.line,
+        column: acc.column,
     });
-    Ok((i, t))
+    Ok((i, Prg { st: t, lasterr }))
 }
 
 // <term> ::= <seq>
-fn parse_term(i: &str) -> IResult<&str, Term> {
+fn parse_term(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     preceded(multispace0, parse_seq).parse(i)
 }
 
-fn parse_term_space(i: &str) -> IResult<&str, Term> {
+fn parse_term_space(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, t) = parse_term(i)?;
     let (i, _) = multispace0(i)?;
     Ok((i, t))
 }
 
-pub fn parse(input: &str) -> Result<Term, String> {
-    let (rest, t) = parse_term_space(input).map_err(|e| e.to_string())?;
+pub fn parse(input: &str) -> Result<Term, ErrorWithPos> {
+    let (rest, t) = parse_term_space(Span::new(input)).map_err(|e| match e {
+        nom::Err::Error(e) => e,
+        e => ErrorWithPos {
+            message: format!("internal error: {}", e),
+            level: 100,
+            kind: None,
+            line: 0,
+            column: 0,
+        },
+    })?;
     if rest.is_empty() {
-        Ok(t)
+        Ok(t.st.v)
+    } else if let Some(lasterr) = t.lasterr {
+        Err(lasterr)
     } else {
-        Err(format!(
-            "\nparse error: input not fully consumed: {}, \nparsed= {}\n= {:?}",
-            rest, t, t
-        ))
+        Err(ErrorWithPos {
+            message: "input not fully consumed".to_string(),
+            level: 100,
+            kind: None,
+            line: rest.location_line(),
+            column: rest.get_utf8_column(),
+        })
     }
 }
 
-use rstest::rstest;
+pub fn display_position(input: &str, line: u32, column: usize) -> String {
+    let lines: Vec<&str> = input.lines().collect();
+    if line == 0 || (line as usize) > lines.len() {
+        return "Invalid line number".to_string();
+    }
 
-#[rstest]
-#[case("1", Some(Term::Var(1)))]
-#[case(r"\:Unit.unit ", Some(Term::Abs(Type::Unit, Box::new(Term::Unit))))]
-#[case(
-    r" unit ; true ",
-    Some(Term::App(
-        Box::new(Term::Abs(Type::Unit, Box::new(Term::True))),
-        Box::new(Term::Unit)
-    ))
-)]
-#[case(
-    r"(\:Bool.unit) false; unit; \:Unit.true",
-    Some(Term::App(
-        Box::new(Term::Abs(
-            Type::Unit,
-            Box::new(Term::App(
-                Box::new(Term::Abs(
-                    Type::Unit,
-                    Box::new(Term::Abs(Type::Unit, Box::new(Term::True)))
-                )),
-                Box::new(Term::Unit)
-            ))
-        )),
-        Box::new(Term::App(
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Unit))),
-            Box::new(Term::False)
+    let target_line = lines[(line - 1) as usize];
+    let mut result = String::new();
+    result.push_str(&format!("at line {}, column {}:\n", line, column));
+    result.push_str(&format!("  | {}\n", target_line));
+    result.push_str("  | ");
+    for _ in 0..column.saturating_sub(1) {
+        result.push(' ');
+    }
+    result.push('^');
+    result
+}
+
+// Wrapper for position-aware parsing (will be implemented later)
+pub fn parse_spanned(input: &str) -> Result<Spanned<Term>, ErrorWithPos> {
+    let (rest, t) = parse_term_space(Span::new(input)).map_err(|e| match e {
+        nom::Err::Error(e) => e,
+        e => ErrorWithPos {
+            message: format!("internal error: {}", e),
+            level: 100,
+            kind: None,
+            line: 0,
+            column: 0,
+        },
+    })?;
+    if rest.is_empty() {
+        Ok(t.st)
+    } else if let Some(lasterr) = t.lasterr {
+        Err(lasterr)
+    } else {
+        Err(ErrorWithPos {
+            message: "input not fully consumed".to_string(),
+            level: 100,
+            kind: None,
+            line: rest.location_line(),
+            column: rest.get_utf8_column(),
+        })
+    }
+}
+
+// Helper function to convert from string to Span and parse with position info
+pub fn parse_spanned_and_render_err(input: &str) -> Result<Spanned<Term>, (String, String)> {
+    match parse_spanned(input) {
+        Ok(term) => Ok(term),
+        Err(err) => {
+            let error_display = display_position(input, err.line, err.column);
+            Err((err.to_string(), error_display))
+        }
+    }
+}
+
+mod tests {
+    use rstest::rstest;
+
+    #[allow(unused)]
+    use crate::{
+        parser::parse,
+        span::{Spanned, dummy_spanned},
+        syntax::{
+            pattern::{PTmpTag, PatField, Pattern},
+            term::{Arm, Field, Tag, Term},
+            r#type::{TyField, Type},
+        },
+    };
+
+    #[allow(unused)]
+    // Helper function to create Spanned<T> for testing
+    fn spanned<T>(value: T) -> Spanned<T> {
+        Spanned {
+            v: value,
+            start: 0,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the term structure, ignoring position info
+    fn extract_term_structure(term: &Term) -> Term {
+        match term {
+            Term::Var(x) => Term::Var(*x),
+            Term::TmpVar(s) => Term::TmpVar(s.clone()),
+            Term::Abs(ty, t) => Term::Abs(
+                extract_type_structure(ty),
+                Box::new(spanned(extract_term_structure(&t.v))),
+            ),
+            Term::App(t1, t2) => Term::App(
+                Box::new(spanned(extract_term_structure(&t1.v))),
+                Box::new(spanned(extract_term_structure(&t2.v))),
+            ),
+            Term::True => Term::True,
+            Term::False => Term::False,
+            Term::If(t1, t2, t3) => Term::If(
+                Box::new(spanned(extract_term_structure(&t1.v))),
+                Box::new(spanned(extract_term_structure(&t2.v))),
+                Box::new(spanned(extract_term_structure(&t3.v))),
+            ),
+            Term::Zero => Term::Zero,
+            Term::Succ(t) => Term::Succ(Box::new(spanned(extract_term_structure(&t.v)))),
+            Term::Pred(t) => Term::Pred(Box::new(spanned(extract_term_structure(&t.v)))),
+            Term::IsZero(t) => Term::IsZero(Box::new(spanned(extract_term_structure(&t.v)))),
+            Term::Unit => Term::Unit,
+            Term::Record(fields) => Term::Record(
+                fields
+                    .iter()
+                    .map(|field| Field {
+                        label: field.label.clone(),
+                        term: spanned(extract_term_structure(&field.term.v)),
+                    })
+                    .collect(),
+            ),
+            Term::Projection(t, label) => Term::Projection(
+                Box::new(spanned(extract_term_structure(&t.v))),
+                label.clone(),
+            ),
+            Term::Let(t1, t2) => Term::Let(
+                Box::new(spanned(extract_term_structure(&t1.v))),
+                Box::new(spanned(extract_term_structure(&t2.v))),
+            ),
+            Term::Plet(p, t1, t2) => Term::Plet(
+                spanned(extract_pattern_structure(&p.v)),
+                Box::new(spanned(extract_term_structure(&t1.v))),
+                Box::new(spanned(extract_term_structure(&t2.v))),
+            ),
+            Term::Tagging(tag) => Term::Tagging(Tag {
+                ty: extract_type_structure(&tag.ty),
+                label: tag.label.clone(),
+            }),
+            Term::Case(t, arms) => Term::Case(
+                Box::new(spanned(extract_term_structure(&t.v))),
+                arms.iter().map(extract_arm_structure).collect(),
+            ),
+            Term::Fix(t) => Term::Fix(Box::new(spanned(extract_term_structure(&t.v)))),
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the type structure, ignoring position info
+    fn extract_type_structure(ty: &Type) -> Type {
+        match ty {
+            Type::Bool => Type::Bool,
+            Type::Nat => Type::Nat,
+            Type::Unit => Type::Unit,
+            Type::TySelf => Type::TySelf,
+            Type::TyVar(s) => Type::TyVar(s.clone()),
+            Type::Arr(t1, t2) => Type::Arr(
+                Box::new(spanned(extract_type_structure(&t1.v))),
+                Box::new(spanned(extract_type_structure(&t2.v))),
+            ),
+            Type::TyRecord(fields) => Type::TyRecord(
+                fields
+                    .iter()
+                    .map(|field| TyField {
+                        label: field.label.clone(),
+                        ty: spanned(extract_type_structure(&field.ty.v)),
+                    })
+                    .collect(),
+            ),
+            Type::TyTagging(fields) => Type::TyTagging(
+                fields
+                    .iter()
+                    .map(|field| TyField {
+                        label: field.label.clone(),
+                        ty: spanned(extract_type_structure(&field.ty.v)),
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the PTmpTag structure, ignoring position info
+    fn extract_ptmptag_structure(ptag: &PTmpTag) -> PTmpTag {
+        PTmpTag {
+            ty: extract_type_structure(&ptag.ty),
+            label: ptag.label.clone(),
+            nargs: ptag.nargs.clone(),
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the Arm structure, ignoring position info
+    fn extract_arm_structure(arm: &Arm) -> Arm {
+        Arm {
+            ptag: extract_ptmptag_structure(&arm.ptag),
+            term: spanned(extract_term_structure(&arm.term.v)),
+            ptag_pos: (1, 1), // Use dummy position for testing
+        }
+    }
+
+    #[allow(unused)]
+    // Helper function to extract just the pattern structure, ignoring position info
+    fn extract_pattern_structure(pat: &Pattern) -> Pattern {
+        match pat {
+            Pattern::Var(s, ty) => Pattern::Var(s.clone(), extract_type_structure(ty)),
+            Pattern::Record(fields) => Pattern::Record(
+                fields
+                    .iter()
+                    .map(|field| PatField {
+                        label: field.label.clone(),
+                        pat: extract_pattern_structure(&field.pat),
+                    })
+                    .collect(),
+            ),
+            Pattern::TmpTagging(ptag) => Pattern::TmpTagging(extract_ptmptag_structure(ptag)),
+        }
+    }
+
+    #[rstest]
+    #[case("1", Some(Term::Var(1)))]
+    #[case(
+        r"\:Unit.unit ",
+        Some(Term::Abs(Type::Unit, Box::new(dummy_spanned(Term::Unit))))
+    )]
+    #[case(
+        r" unit ; true ",
+        Some(Term::App(
+            Box::new(dummy_spanned(Term::Abs(Type::Unit, Box::new(dummy_spanned(Term::True))))),
+            Box::new(dummy_spanned(Term::Unit))
         ))
-    ))
-)]
-#[case(
-    r"   ( \ : Bool . 0 )   ",
-    Some(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-)]
-#[case(
-    r"( \ :Bool. 0) 1",
-    Some(Term::App(
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-        Box::new(Term::Var(1))
-    ))
-)]
-#[case(
-    r"(\ : Bool.0) ( \   : Bool . 0 )",
-    Some(Term::App(
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-    ))
-)]
-#[case(
-    r"(\:Bool.0) (\:Bool.0) (\:Bool.0)",
-    Some(Term::App(
-        Box::new(Term::App(
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-        )),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
-    ))
-)]
-#[case(
-    r"\:Bool.1\:Bool.0",
-    Some(Term::Abs(
-        Type::Bool,
-        Box::new(Term::App(
-            Box::new(Term::Var(1)),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+    )]
+    #[case(
+        r"(\:Bool.unit) false; unit; \:Unit.true",
+        Some(Term::App(
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Unit,
+                Box::new(dummy_spanned(Term::App(
+                    Box::new(dummy_spanned(Term::Abs(
+                        Type::Unit,
+                        Box::new(dummy_spanned(Term::Abs(
+                            Type::Unit,
+                            Box::new(dummy_spanned(Term::True))
+                        )))
+                    ))),
+                    Box::new(dummy_spanned(Term::Unit))
+                )))
+            ))),
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Unit))
+                ))),
+                Box::new(dummy_spanned(Term::False))
+            )))
         ))
-    ))
-)]
-#[case(r" true", Some(Term::True))]
-#[case(r" false ", Some(Term::False))]
-#[case(
-    r"if true then false else true",
-    Some(Term::If(Box::new(Term::True), Box::new(Term::False), Box::new(Term::True)))
-)]
-#[case(
-    r"if true then \:Bool.\:Bool.0 else \:Bool.\:Bool.1",
-    Some(Term::If(
-        Box::new(Term::True),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0)))))),
-        Box::new(Term::Abs(Type::Bool, Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(1))))))
-    ))
-)]
-// \f:Bool->Bool.\x:Bool.if f x then false else true
-#[case(
-    r"\:Bool->Bool.\:Bool.if 1 0 then false else true",
-    Some(Term::Abs(
-        Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)),
-        Box::new(Term::Abs(
+    )]
+    #[case(
+        r"   ( \ : Bool . 0 )   ",
+        Some(Term::Abs(Type::Bool, Box::new(dummy_spanned(Term::Var(0)))))
+    )]
+    #[case(
+        r"( \ :Bool. 0) 1",
+        Some(Term::App(
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            ))),
+            Box::new(dummy_spanned(Term::Var(1)))
+        ))
+    )]
+    #[case(
+        r"(\ : Bool.0) (\   : Bool . 0 )",
+        Some(Term::App(
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            ))),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            )))
+        ))
+    )]
+    #[case(
+        r"(\:Bool.0) (\:Bool.0) (\:Bool.0)",
+        Some(Term::App(
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Var(0)))
+                ))),
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Var(0)))
+                )))
+            ))),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Var(0)))
+            )))
+        ))
+    )]
+    #[case(
+        r"\:Bool.1\:Bool.0",
+        Some(Term::Abs(
             Type::Bool,
-            Box::new(Term::If(
-                Box::new(Term::App(Box::new(Term::Var(1)), Box::new(Term::Var(0)))),
-                Box::new(Term::False),
-                Box::new(Term::True)
-            )),
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::Var(1))),
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Var(0)))
+                )))
+            )))
         ))
-    ))
-)]
-// realbool = \b:Bool->Bool->Bool.b true false
-#[case(
-    r"\:Bool->Bool->Bool.0 true false",
-    Some(Term::Abs(
-        Type::Arr(
-            Box::new(Type::Bool),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-        ),
-        Box::new(Term::App(
-            Box::new(Term::App(Box::new(Term::Var(0)), Box::new(Term::True))),
-            Box::new(Term::False)
+    )]
+    #[case(r" true", Some(Term::True))]
+    #[case(r" false ", Some(Term::False))]
+    #[case(
+        r"if true then false else true",
+        Some(Term::If(
+            Box::new(dummy_spanned(Term::True)),
+            Box::new(dummy_spanned(Term::False)),
+            Box::new(dummy_spanned(Term::True))
         ))
-    ))
-)]
-// \a:(Bool->Bool)->Bool.a (\b:Bool.b)
-#[case(
-    r" \ : ( Bool -> Bool ) -> Bool . 0 ( \ : Bool . 0 )",
-    Some(Term::Abs(
-        Type::Arr(
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool))),
-            Box::new(Type::Bool)
-        ),
-        Box::new(Term::App(
-            Box::new(Term::Var(0)),
-            Box::new(Term::Abs(Type::Bool, Box::new(Term::Var(0))))
+    )]
+    #[case(
+        r"if true then \:Bool.\:Bool.0 else \:Bool.\:Bool.1",
+        Some(Term::If(
+            Box::new(dummy_spanned(Term::True)),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Var(0)))
+                )))
+            ))),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Var(1)))
+                )))
+            )))
         ))
-    ))
-)]
-#[case(
-    r"\:(Bool->Bool->Bool)->Bool->Bool.0",
-    Some(Term::Abs(
-        Type::Arr(
-            Box::new(Type::Arr(
-                Box::new(Type::Bool),
-                Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
-            )),
-            Box::new(Type::Arr(Box::new(Type::Bool), Box::new(Type::Bool)))
-        ),
-        Box::new(Term::Var(0))
-    ))
-)]
-#[case(
+    )]
+    // \f:Bool->Bool.\x:Bool.if f x then false else true
+    #[case(
+        r"\:Bool->Bool.\:Bool.if 1 0 then false else true",
+        Some(Term::Abs(
+            Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Bool))
+            ),
+            Box::new(dummy_spanned(Term::Abs(
+                Type::Bool,
+                Box::new(dummy_spanned(Term::If(
+                    Box::new(dummy_spanned(Term::App(
+                        Box::new(dummy_spanned(Term::Var(1))),
+                        Box::new(dummy_spanned(Term::Var(0)))
+                    ))),
+                    Box::new(dummy_spanned(Term::False)),
+                    Box::new(dummy_spanned(Term::True))
+                ))),
+            )))
+        ))
+    )]
+    // realbool = \b:Bool->Bool->Bool.b true false
+    #[case(
+        r"\:Bool->Bool->Bool.0 true false",
+        Some(Term::Abs(
+            Type::Arr(
+                Box::new(dummy_spanned(Type::Bool)),
+                Box::new(dummy_spanned(Type::Arr(
+                    Box::new(dummy_spanned(Type::Bool)),
+                    Box::new(dummy_spanned(Type::Bool))
+                ))),
+            ),
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::App(
+                    Box::new(dummy_spanned(Term::Var(0))),
+                    Box::new(dummy_spanned(Term::True))
+                ))),
+                Box::new(dummy_spanned(Term::False))
+            )))
+        ))
+    )]
+    // \a:(Bool->Bool)->Bool.a (\b:Bool.b)
+    #[case(
+        r" \ : ( Bool -> Bool ) -> Bool . 0 ( \ : Bool . 0 )",
+        Some(Term::Abs(
+            Type::Arr(
+                Box::new(dummy_spanned(Type::Arr(
+                    Box::new(dummy_spanned(Type::Bool)),
+                    Box::new(dummy_spanned(Type::Bool))
+                ))),
+                Box::new(dummy_spanned(Type::Bool))
+            ),
+            Box::new(dummy_spanned(Term::App(
+                Box::new(dummy_spanned(Term::Var(0))),
+                Box::new(dummy_spanned(Term::Abs(
+                    Type::Bool,
+                    Box::new(dummy_spanned(Term::Var(0)))
+                )))
+            )))
+        ))
+    )]
+    #[case(
+        r"\:(Bool->Bool->Bool)->Bool->Bool.0",
+        Some(Term::Abs(
+            Type::Arr(
+                Box::new(dummy_spanned(Type::Arr(
+                    Box::new(dummy_spanned(Type::Bool)),
+                    Box::new(dummy_spanned(Type::Arr(
+                        Box::new(dummy_spanned(Type::Bool)),
+                        Box::new(dummy_spanned(Type::Bool))
+                    )))
+                ))),
+                Box::new(dummy_spanned(Type::Arr(
+                    Box::new(dummy_spanned(Type::Bool)),
+                    Box::new(dummy_spanned(Type::Bool))
+                )))
+            ),
+            Box::new(dummy_spanned(Term::Var(0)))
+        ))
+    )]
+    #[case(
     r"
 case <Bool->Self, Unit->Self>:::0 true of
   | <Bool->Self, Unit->Self>:::0 b => b
   | <Bool->Self, Unit->Self>:::1 u => false
     ",
     Some(Term::Case(
-        Box::new(Term::App(
-            Box::new(Term::Tagging(Tag {
+        Box::new(dummy_spanned(Term::App(
+            Box::new(dummy_spanned(Term::Tagging(Tag {
                 ty: Type::TyTagging(
                     [
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Bool)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Unit)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                     ]
                     .to_vec(),
                 ),
                 label: "0".to_string(),
-            })),
-            Box::new(Term::True),
-        )),
+            }))),
+            Box::new(dummy_spanned(Term::True)),
+        ))),
         vec![
             Arm {
                 ptag: PTmpTag {
                     ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Bool)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Unit)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                     ]),
                     label: "0".to_string(),
                     nargs: vec!["0".to_string()],
                 },
-                term: Term::Var(0),
+                term: dummy_spanned(Term::Var(0)),
+                ptag_pos: (1, 1),
             },
             Arm {
                 ptag: PTmpTag {
                     ty: Type::TyTagging(vec![
                         TyField {
                             label: "0".to_string(),
-                            ty: Type::Arr(Box::new(Type::Bool), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Bool)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                         TyField {
                             label: "1".to_string(),
-                            ty: Type::Arr(Box::new(Type::Unit), Box::new(Type::TySelf)),
+                            ty: dummy_spanned(Type::Arr(
+                                Box::new(dummy_spanned(Type::Unit)),
+                                Box::new(dummy_spanned(Type::TySelf)),
+                            )),
                         },
                     ]),
                     label: "1".to_string(),
                     nargs: vec!["0".to_string()],
                 },
-                term: Term::False,
+                term: dummy_spanned(Term::False),
+                ptag_pos: (1, 1),
             },
         ],
     ))
 )]
-#[case(
-    r"let x = true in x",
-    Some(Term::Let(Box::new(Term::True), Box::new(Term::Var(0))))
-)]
-#[case(
+    #[case(
+        r"let x = true in x",
+        Some(Term::Let(
+            Box::new(dummy_spanned(Term::True)),
+            Box::new(dummy_spanned(Term::Var(0)))
+        ))
+    )]
+    #[case(
     r"let x:Bool = true in x",
     Some(Term::Plet(
-        Pattern::Var("0".to_string(), Type::Bool),
-        Box::new(Term::True),
-        Box::new(Term::Var(0))
+        dummy_spanned(Pattern::Var("0".to_string(), Type::Bool)),
+        Box::new(dummy_spanned(Term::True)),
+        Box::new(dummy_spanned(Term::Var(0)))
     ))
 )]
-#[case(r"\", None)]
-#[case(r"(", None)]
-#[case(r")", None)]
-#[case(r"()", None)]
-#[case(r"\()", None)]
-fn test_parse_term(#[case] input: &str, #[case] expected: Option<Term>) {
-    println!("input: {input}");
-    assert_eq!(parse(input).ok(), expected);
+    #[case(r"\", None)]
+    #[case(r"(", None)]
+    #[case(r")", None)]
+    #[case(r"()", None)]
+    #[case(r"\()", None)]
+    fn test_parse_term(#[case] input: &str, #[case] expected: Option<Term>) {
+        println!("input: {input}");
+        let result = parse(input).ok().map(|term| extract_term_structure(&term));
+        assert_eq!(result, expected);
+    }
 }

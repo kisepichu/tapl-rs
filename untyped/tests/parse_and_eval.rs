@@ -1,7 +1,7 @@
 extern crate untyped;
 
 use rstest::rstest;
-use untyped::eval;
+use untyped::{eval, span::Spanned};
 
 const EQUAL: &str = r"(
         \\(\\1 0 \\0)
@@ -42,7 +42,12 @@ const EQUAL: &str = r"(
 #[case(r"(\\\\3 1(2 1 0)) (\\0) \\0", r"\\(\\0) 1 ((\\0) 1 0)")] // plus c_0 c_0 == c_0' == \\(\\0) 1 ((\\0) 1 0) -> \\(\\0) 1 0 -> \\0
 #[case(r"(\\\\3 1(2 1 0)) (\\1 0) \\1 0", r"\\(\\1 0) 1 ((\\1 0) 1 0)")] // plus c_1 c_1 == c_2' == \\(\\1 0) 1 ((\\1 0) 1 0) -> \\(\\1 0) 1 (1 0) -> \\1(1 0)
 fn test_parse_and_eval(#[case] input: &str, #[case] expected: &str) {
-    let t = untyped::parser::parse(input).unwrap();
+    let t = Spanned {
+        v: untyped::parser::parse_and_render_err(input).unwrap(),
+        start: 0,
+        line: 0,
+        column: 0
+    };
     let t = eval::eval(&t).unwrap();
     let s = t.to_string();
     if s != expected {
@@ -75,7 +80,12 @@ fn test_parse_and_eval(#[case] input: &str, #[case] expected: &str) {
 #[case(r"((\\0 1) (\\1(1 0)) \\0) \\1 0", r"\\1")] // equal (pow2 c_2 c_0) c_1 == tru
 fn test_parse_and_eval_equal(#[case] input: &str, #[case] expected: &str) {
     let input = EQUAL.to_string() + input;
-    let t = untyped::parser::parse(input.as_str()).unwrap();
+    let t = Spanned {
+        v: untyped::parser::parse_and_render_err(input.as_str()).unwrap(),
+        start: 0,
+        line: 0,
+        column: 0
+    };
     let t = eval::eval(&t).unwrap();
     let s = t.to_string();
     if s != expected {
