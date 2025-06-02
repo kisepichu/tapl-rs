@@ -1,7 +1,5 @@
 use std::iter::once;
 
-use rstest::rstest;
-
 use crate::{
     span::dummy_spanned,
     syntax::{
@@ -40,7 +38,6 @@ fn types_equal_ignore_pos(ty1: &Type, ty2: &Type) -> bool {
     }
 }
 
-#[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
         Term::Var(xn) => {

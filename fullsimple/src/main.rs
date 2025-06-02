@@ -37,7 +37,7 @@ fn main() -> Result<()> {
                 let t = match parser::parse_spanned_and_render_err(line.as_str()) {
                     Ok(spanned_t) => spanned_t.v,
                     Err((err_msg, err_display)) => {
-                        println!("{}", err_msg);
+                        println!("Parse Error: {}", err_msg);
                         println!("{}\n", err_display);
                         continue;
                     }

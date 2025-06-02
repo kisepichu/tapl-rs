@@ -20,19 +20,6 @@ use nom::{
 };
 mod utils;
 
-// Helper function for creating Prg<T> with dummy position (like dummy_spanned)
-fn dummy_prg<T>(value: T) -> Prg<T> {
-    Prg {
-        st: Spanned {
-            v: value,
-            start: 0,
-            line: 1,
-            column: 1,
-        },
-        lasterr: None,
-    }
-}
-
 fn reserved_check(ident: &str) -> bool {
     let rs = [
         "let", "letrec", "plet", "in", "if", "then", "else", "true", "false", "unit", "zero",
@@ -42,20 +29,6 @@ fn reserved_check(ident: &str) -> bool {
 }
 
 /// <ident> ::= <ident> (alphabet|digit) | alphabet
-fn parse_ident(i: &str) -> IResult<&str, String> {
-    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
-    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
-    let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
-    if reserved_check(s.as_str()) {
-        Err(nom::Err::Error(nom::error::Error::new(
-            i,
-            nom::error::ErrorKind::Fail,
-        )))
-    } else {
-        Ok((i, s))
-    }
-}
-
 fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
@@ -65,8 +38,8 @@ fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
         .fold("".to_string(), |acc, c| acc + c);
     if reserved_check(s.as_str()) {
         Err(nom::Err::Error(ErrorWithPos {
-            message: "reserved word used as identifier".to_string(),
-            level: 90,
+            message: format!("reserved word '{}' used as identifier", s),
+            level: 20,
             kind: Some(nom::error::ErrorKind::Fail),
             line: i.location_line(),
             column: i.get_utf8_column(),
@@ -86,34 +59,6 @@ fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
         ))
     }
 }
-fn parse_ident_reserved(i: &str) -> IResult<&str, String> {
-    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
-    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
-    let s = once(s0).chain(s).fold("".to_string(), |acc, c| acc + c);
-    if reserved_check(s.as_str()) {
-        Ok((i, s))
-    } else {
-        Err(nom::Err::Error(nom::error::Error::new(
-            i,
-            nom::error::ErrorKind::Fail,
-        )))
-    }
-}
-
-fn parse_reserved(ident: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
-    move |i: &str| {
-        let (i, s) = preceded(multispace0, parse_ident_reserved).parse(i)?;
-        if s != ident {
-            Err(nom::Err::Error(nom::error::Error::new(
-                i,
-                nom::error::ErrorKind::Fail,
-            )))
-        } else {
-            Ok((i, ()))
-        }
-    }
-}
-
 fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, (), ErrorWithPos> {
     move |i: Span| {
         let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
@@ -124,8 +69,8 @@ fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, ()
             .fold("".to_string(), |acc, c| acc + c);
         if parsed != ident {
             Err(nom::Err::Error(ErrorWithPos {
-                message: format!("expected '{}'", ident),
-                level: 90,
+                message: format!("expected ident '{}'", ident),
+                level: 10,
                 kind: Some(nom::error::ErrorKind::Fail),
                 line: i.location_line(),
                 column: i.get_utf8_column(),
@@ -136,33 +81,15 @@ fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, ()
     }
 }
 
-fn parse_number(i: &str) -> IResult<&str, usize> {
-    map_res(digit1, |s: &str| s.parse::<usize>()).parse(i)
-}
-
-fn parse_number_tostring(i: &str) -> IResult<&str, String> {
-    map_res(digit1, |s: &str| s.parse::<usize>())
-        .map(|n| n.to_string())
-        .parse(i)
-}
-
-/// <labelorindex> ::= <label> | number
-fn parse_labelorindex(i: &str) -> IResult<&str, String> {
-    alt((
-        preceded(multispace0, parse_ident),
-        preceded(multispace0, parse_number_tostring),
-    ))
+fn parse_number_tostring(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
+    with_pos(map_res(digit1, |s: Span| {
+        s.fragment().parse::<usize>().map(|n| n.to_string())
+    }))
     .parse(i)
 }
 
 fn parse_labelorindex_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
-    alt((
-        parse_ident_span,
-        with_pos(map_res(digit1, |s: Span| {
-            s.fragment().parse::<usize>().map(|n| n.to_string())
-        })),
-    ))
-    .parse(i)
+    alt((parse_ident_span, parse_number_tostring)).parse(i)
 }
 
 // <tyfield> ::= <label> ":" <ty> | <ty>
@@ -595,49 +522,26 @@ fn parse_unit(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 // <var> ::= number | string
 fn parse_varnum(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (_i, _check) = alphanumeric1.parse(i)?;
-    update_err(
-        "variable must be numeric",
-        90,
-        with_pos(map_res(digit1, |s: Span| {
-            s.fragment().parse::<usize>().map(Term::Var)
-        })),
-    )
+    with_pos(map_res(digit1, |s: Span| {
+        s.fragment().parse::<usize>().map(Term::Var)
+    }))
     .parse(i)
 }
 fn parse_varstr(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, s) = alphanumeric1(i)?;
-    if reserved_check(&s) {
-        return Err(nom::Err::Error(ErrorWithPos {
-            message: format!("variable name {} is reserved", s),
-            level: 20,
-            kind: Some(nom::error::ErrorKind::Tag),
-            line: i.location_line(),
-            column: i.get_utf8_column(),
-        }));
-    }
-    if s.fragment().chars().all(|c| c.is_ascii_digit()) {
-        Err(nom::Err::Error(ErrorWithPos {
-            message: "variables should use alphanumeric identifiers, not numbers".to_string(),
-            level: 90,
-            kind: Some(nom::error::ErrorKind::Tag),
-            line: i.location_line(),
-            column: i.get_utf8_column(),
-        }))
-    } else {
-        Ok((
-            i,
-            Prg {
-                st: Spanned {
-                    v: Term::TmpVar(s.fragment().to_string()),
-                    start: start_pos.0,
-                    line: start_pos.1,
-                    column: start_pos.2,
-                },
-                lasterr: None,
+    let (i, s) = parse_ident_span(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::TmpVar(s.st.v),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
             },
-        ))
-    }
+            lasterr: s.lasterr,
+        },
+    ))
 }
 /// <var> ::= number | string
 fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
@@ -823,7 +727,7 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, _) = parse_reserved_span("let").parse(i)?;
     let (i, name) = update_err(
         "identifier expected",
-        20,
+        50,
         preceded(multispace0, parse_ident_span),
     )
     .parse(i)?;
@@ -1314,7 +1218,7 @@ pub fn display_position(input: &str, line: u32, column: usize) -> String {
 
     let target_line = lines[(line - 1) as usize];
     let mut result = String::new();
-    result.push_str(&format!("Error at line {}, column {}:\n", line, column));
+    result.push_str(&format!("at line {}, column {}:\n", line, column));
     result.push_str(&format!("  | {}\n", target_line));
     result.push_str("  | ");
     for _ in 0..column.saturating_sub(1) {

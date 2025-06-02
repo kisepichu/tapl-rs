@@ -11,8 +11,6 @@ pub struct Spanned<T> {
     pub column: usize,
 }
 
-
-
 impl<T: fmt::Display> fmt::Display for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.v)
