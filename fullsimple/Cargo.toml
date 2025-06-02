@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 nom = "8.0.0"
-nom_locate = "4.2.0"
+nom_locate = "5.0.0"
 num = "0.4.3"
 rstest = "0.25.0"
 rustyline = "15.0.0"

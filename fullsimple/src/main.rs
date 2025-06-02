@@ -34,10 +34,11 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                let t = match parser::parse(line.as_str()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        println!("{}\n", e);
+                let t = match parser::parse_spanned_and_render_err(line.as_str()) {
+                    Ok(spanned_t) => spanned_t.v,
+                    Err((err_msg, err_display)) => {
+                        println!("{}", err_msg);
+                        println!("{}\n", err_display);
                         continue;
                     }
                 };
