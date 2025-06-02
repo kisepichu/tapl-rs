@@ -114,6 +114,28 @@ fn parse_reserved(ident: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
     }
 }
 
+fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, (), ErrorWithPos> {
+    move |i: Span| {
+        let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
+        let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
+
+        let parsed = once(s0.fragment())
+            .chain(s.iter().map(|x| x.fragment()))
+            .fold("".to_string(), |acc, c| acc + c);
+        if parsed != ident {
+            Err(nom::Err::Error(ErrorWithPos {
+                message: format!("expected '{}'", ident),
+                level: 90,
+                kind: Some(nom::error::ErrorKind::Fail),
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            }))
+        } else {
+            Ok((i, ()))
+        }
+    }
+}
+
 fn parse_number(i: &str) -> IResult<&str, usize> {
     map_res(digit1, |s: &str| s.parse::<usize>()).parse(i)
 }
@@ -552,22 +574,22 @@ fn parse_pat(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
 
 /// <zero> ::= "zero"
 fn parse_zero(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    with_pos(map(tag("zero"), |_| Term::Zero)).parse(i)
+    with_pos(map(parse_reserved_span("zero"), |_| Term::Zero)).parse(i)
 }
 
 /// <false> ::= "false"
 fn parse_false(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    with_pos(map(tag("false"), |_| Term::False)).parse(i)
+    with_pos(map(parse_reserved_span("false"), |_| Term::False)).parse(i)
 }
 
 /// <true> ::= "true"
 fn parse_true(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    with_pos(map(tag("true"), |_| Term::True)).parse(i)
+    with_pos(map(parse_reserved_span("true"), |_| Term::True)).parse(i)
 }
 
 // <unit> ::= "unit"
 fn parse_unit(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    with_pos(map(tag("unit"), |_| Term::Unit)).parse(i)
+    with_pos(map(parse_reserved_span("unit"), |_| Term::Unit)).parse(i)
 }
 
 // <var> ::= number | string
@@ -585,6 +607,15 @@ fn parse_varnum(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 fn parse_varstr(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, s) = alphanumeric1(i)?;
+    if reserved_check(&s) {
+        return Err(nom::Err::Error(ErrorWithPos {
+            message: format!("variable name {} is reserved", s),
+            level: 20,
+            kind: Some(nom::error::ErrorKind::Tag),
+            line: i.location_line(),
+            column: i.get_utf8_column(),
+        }));
+    }
     if s.fragment().chars().all(|c| c.is_ascii_digit()) {
         Err(nom::Err::Error(ErrorWithPos {
             message: "variables should use alphanumeric identifiers, not numbers".to_string(),
@@ -616,7 +647,7 @@ fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <succ> ::= "succ" <term>
 fn parse_succ(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("succ")).parse(i)?;
+    let (i, _) = parse_reserved_span("succ").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     Ok((
         i,
@@ -635,7 +666,7 @@ fn parse_succ(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <pred> ::= "pred" <term>
 fn parse_pred(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("pred")).parse(i)?;
+    let (i, _) = parse_reserved_span("pred").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     Ok((
         i,
@@ -654,7 +685,7 @@ fn parse_pred(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <iszero> ::= "iszero" <term>
 fn parse_iszero(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = tag("iszero").parse(i)?;
+    let (i, _) = parse_reserved_span("iszero").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     Ok((
         i,
@@ -742,11 +773,11 @@ fn parse_record(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 
 fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, _) = parse_reserved_span("let").parse(i)?;
     let (i, p) = update_err("pattern expected", 20, preceded(multispace0, parse_pat)).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = parse_reserved_span("in").parse(i)?;
     let (i, t2) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     let (t2_renamed, t1_renamed, p_renamed, _n) =
         t2.st.v.subst_pat(&t1.st.v, &p.st.v, 0).map_err(|e| {
@@ -789,7 +820,7 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <let> ::= "let" <bound> "=" <term> "in" <term>
 fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("let")).parse(i)?;
+    let (i, _) = parse_reserved_span("let").parse(i)?;
     let (i, name) = update_err(
         "identifier expected",
         20,
@@ -798,7 +829,7 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     .parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = parse_reserved_span("in").parse(i)?;
     let (i, t2) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     let renamed = t2.st.v.subst_name(name.st.v.as_str());
     Ok((
@@ -826,14 +857,24 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <if> ::= "if" <term> "then" <term> "else" <term>
 fn parse_if(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = tag("if").parse(i)?;
-    let (i, t1) = update_err("condition expected", 20, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("then")).parse(i)?;
-    let (i, t2) = update_err("then branch expected", 20, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("else")).parse(i)?;
+    let (i, _) = parse_reserved_span("if").parse(i)?;
+    let (i, t1) =
+        update_err("condition expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+    let (i, _) = parse_reserved_span("then").parse(i)?;
+    let (i, t2) = update_err(
+        "then branch expected",
+        20,
+        preceded(multispace0, parse_term),
+    )
+    .parse(i)?;
+    let (i, _) = parse_reserved_span("else").parse(i)?;
     let (i, t3) = chmax_err(
         &t1.lasterr.or(t2.lasterr),
-        update_err("else branch expected", 20, parse_term),
+        update_err(
+            "else branch expected",
+            20,
+            preceded(multispace0, parse_term),
+        ),
     )
     .parse(i)?;
 
@@ -920,9 +961,9 @@ fn parse_arms(i: Span) -> IResult<Span, Prg<Vec<Arm>>, ErrorWithPos> {
 // <case> ::= "case" <term> "of" <arms>
 fn parse_case(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("case")).parse(i)?;
+    let (i, _) = parse_reserved_span("case").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("of")).parse(i)?;
+    let (i, _) = parse_reserved_span("of").parse(i)?;
     let (i, arms) =
         update_err("case arms expected", 20, preceded(multispace0, parse_arms)).parse(i)?;
     Ok((
@@ -941,7 +982,7 @@ fn parse_case(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 
 /// <lettype> ::= "type" <ident> "=" <type> "in" <term>
 fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    let (i, _) = preceded(multispace0, tag("type")).parse(i)?;
+    let (i, _) = parse_reserved_span("type").parse(i)?;
     let (i, name) = update_err(
         "identifier expected",
         20,
@@ -951,7 +992,7 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, ty) =
         update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = parse_reserved_span("in").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     let renamed = t.st.v.subst_type_name(name.st.v.as_str(), &ty.st.v);
     Ok((
@@ -971,7 +1012,7 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <fix> ::= "fix" <term>
 fn parse_fix(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("fix")).parse(i)?;
+    let (i, _) = parse_reserved_span("fix").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     Ok((
         i,
@@ -990,7 +1031,7 @@ fn parse_fix(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <letrec> ::= "letrec" <bound> ":" <ty> "=" <term> "in" <term>
 fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("letrec")).parse(i)?;
+    let (i, _) = parse_reserved_span("letrec").parse(i)?;
     let (i, name) = update_err(
         "identifier expected",
         20,
@@ -1002,7 +1043,7 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("in")).parse(i)?;
+    let (i, _) = parse_reserved_span("in").parse(i)?;
     let (i, t2) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
     let t1_renamed = t1.st.v.subst_name(name.st.v.as_str());
     let t2_renamed = t2.st.v.subst_name(name.st.v.as_str());
