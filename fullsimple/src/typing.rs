@@ -414,8 +414,8 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                     ),
                     level: 90,
                     kind: None,
-                    line: t.line,
-                    column: t.column,
+                    line: t1.line,
+                    column: t1.column,
                 })
             }
         }

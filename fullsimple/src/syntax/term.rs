@@ -415,7 +415,11 @@ impl Term {
     }
 
     /// 位置情報を保持しながら変数名を数値に変換する
-    pub fn subst_name_spanned(&self, zero_name: &str, spanned_term: &Spanned<Term>) -> Spanned<Term> {
+    pub fn subst_name_spanned(
+        &self,
+        zero_name: &str,
+        spanned_term: &Spanned<Term>,
+    ) -> Spanned<Term> {
         use crate::span::Spanned;
 
         fn walk_spanned(t: &Spanned<Term>, z: &str, c: usize) -> Spanned<Term> {
@@ -556,86 +560,6 @@ impl Term {
         walk_spanned(spanned_term, zero_name, 0)
     }
 
-    pub fn subst_type_name(&self, type_name: &str, ty2: &Type) -> Term {
-        use crate::span::dummy_spanned;
-
-        match self {
-            Term::Var(_) => self.clone(),
-            Term::TmpVar(_) => self.clone(),
-            Term::Abs(ty, t1) => Term::Abs(
-                ty.subst_name(type_name, ty2),
-                Box::new(dummy_spanned(t1.v.subst_type_name(type_name, ty2))),
-            ),
-            Term::Unit => Term::Unit,
-            Term::True => Term::True,
-            Term::False => Term::False,
-            Term::Zero => Term::Zero,
-            Term::Succ(t1) => Term::Succ(Box::new(dummy_spanned(
-                t1.v.subst_type_name(type_name, ty2),
-            ))),
-            Term::Pred(t1) => Term::Pred(Box::new(dummy_spanned(
-                t1.v.subst_type_name(type_name, ty2),
-            ))),
-            Term::IsZero(t1) => Term::IsZero(Box::new(dummy_spanned(
-                t1.v.subst_type_name(type_name, ty2),
-            ))),
-            Term::App(t1, t2) => Term::App(
-                Box::new(dummy_spanned(t1.v.subst_type_name(type_name, ty2))),
-                Box::new(dummy_spanned(t2.v.subst_type_name(type_name, ty2))),
-            ),
-            Term::Record(fields) => Term::Record(
-                fields
-                    .iter()
-                    .map(|field| Field {
-                        label: field.label.clone(),
-                        term: dummy_spanned(field.term.v.subst_type_name(type_name, ty2)),
-                    })
-                    .collect(),
-            ),
-            Term::Projection(t, label) => Term::Projection(
-                Box::new(dummy_spanned(t.v.subst_type_name(type_name, ty2))),
-                label.clone(),
-            ),
-            Term::If(t1, t2, t3) => Term::If(
-                Box::new(dummy_spanned(t1.v.subst_type_name(type_name, ty2))),
-                Box::new(dummy_spanned(t2.v.subst_type_name(type_name, ty2))),
-                Box::new(dummy_spanned(t3.v.subst_type_name(type_name, ty2))),
-            ),
-            Term::Let(t1, t2) => {
-                let t1 = t1.v.subst_type_name(type_name, ty2);
-                let t2 = t2.v.subst_type_name(type_name, ty2);
-                Term::Let(Box::new(dummy_spanned(t1)), Box::new(dummy_spanned(t2)))
-            }
-            Term::Plet(p, t1, t2) => {
-                let p_new = p.v.subst_type_name(type_name, ty2);
-                let t1 = t1.v.subst_type_name(type_name, ty2);
-                let t2 = t2.v.subst_type_name(type_name, ty2);
-                Term::Plet(
-                    dummy_spanned(p_new),
-                    Box::new(dummy_spanned(t1)),
-                    Box::new(dummy_spanned(t2)),
-                )
-            }
-            Term::Tagging(tag) => Term::Tagging(Tag {
-                ty: tag.ty.subst_name(type_name, ty2),
-                label: tag.label.clone(),
-            }),
-            Term::Case(t, bs) => Term::Case(
-                Box::new(dummy_spanned(t.v.subst_type_name(type_name, ty2))),
-                bs.iter()
-                    .map(|b| Arm {
-                        ptag: b.ptag.subst_type_name(type_name, ty2),
-                        term: dummy_spanned(b.term.v.subst_type_name(type_name, ty2)),
-                        ptag_pos: b.ptag_pos,
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            Term::Fix(t1) => Term::Fix(Box::new(dummy_spanned(
-                t1.v.subst_type_name(type_name, ty2),
-            ))),
-        }
-    }
-
     /// 位置情報を保持しながら型名を置換する
     pub fn subst_type_name_spanned(
         &self,
@@ -645,11 +569,7 @@ impl Term {
     ) -> Spanned<Term> {
         use crate::span::Spanned;
 
-        fn walk_type_spanned(
-            t: &Spanned<Term>,
-            type_name: &str,
-            ty2: &Type,
-        ) -> Spanned<Term> {
+        fn walk_type_spanned(t: &Spanned<Term>, type_name: &str, ty2: &Type) -> Spanned<Term> {
             match &t.v {
                 Term::Var(_) => t.clone(),
                 Term::TmpVar(_) => t.clone(),
@@ -928,163 +848,5 @@ impl Term {
                 Ok((t, t1.clone(), Pattern::TmpTagging(ptag), n))
             }
         }
-    }
-
-    /// パターンマッチでの変数置換時に位置情報を保持する
-    pub fn subst_name_spanned_for_pat(&self, spanned_term: &Spanned<Term>, pattern: &Pattern) -> Spanned<Term> {
-        use crate::span::Spanned;
-        use crate::syntax::pattern::Pattern;
-
-        fn walk_pattern_spanned(t: &Spanned<Term>, pattern: &Pattern, base_offset: usize) -> Spanned<Term> {
-            match pattern {
-                Pattern::Var(name, _) => {
-                    // For each variable in the pattern, substitute it with index based replacement
-                    walk_var_spanned(t, name, base_offset)
-                }
-                Pattern::Record(pfs) => {
-                    let mut result = t.clone();
-                    let mut offset = base_offset;
-                    for pf in pfs {
-                        result = walk_pattern_spanned(&result, &pf.pat, offset);
-                        offset += pf.pat.len();
-                    }
-                    result
-                }
-                _ => t.clone(), // For other patterns, no substitution needed for now
-            }
-        }
-
-        fn walk_var_spanned(t: &Spanned<Term>, var_name: &str, index: usize) -> Spanned<Term> {
-            match &t.v {
-                Term::Var(x) => t.clone(),
-                Term::TmpVar(s) => {
-                    if s == var_name {
-                        Spanned {
-                            v: Term::Var(index),
-                            start: t.start,
-                            line: t.line,
-                            column: t.column,
-                        }
-                    } else {
-                        t.clone()
-                    }
-                }
-                Term::Abs(ty, t1) => Spanned {
-                    v: Term::Abs(ty.clone(), Box::new(walk_var_spanned(t1, var_name, index + 1))),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::App(t1, t2) => Spanned {
-                    v: Term::App(
-                        Box::new(walk_var_spanned(t1, var_name, index)),
-                        Box::new(walk_var_spanned(t2, var_name, index)),
-                    ),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::Unit => t.clone(),
-                Term::True => t.clone(),
-                Term::False => t.clone(),
-                Term::Zero => t.clone(),
-                Term::Succ(t1) => Spanned {
-                    v: Term::Succ(Box::new(walk_var_spanned(t1, var_name, index))),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::Pred(t1) => Spanned {
-                    v: Term::Pred(Box::new(walk_var_spanned(t1, var_name, index))),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::IsZero(t1) => Spanned {
-                    v: Term::IsZero(Box::new(walk_var_spanned(t1, var_name, index))),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::Record(fields) => {
-                    let fields = fields
-                        .iter()
-                        .map(|field| Field {
-                            label: field.label.clone(),
-                            term: walk_var_spanned(&field.term, var_name, index),
-                        })
-                        .collect();
-                    Spanned {
-                        v: Term::Record(fields),
-                        start: t.start,
-                        line: t.line,
-                        column: t.column,
-                    }
-                }
-                Term::Projection(t_inner, label) => Spanned {
-                    v: Term::Projection(Box::new(walk_var_spanned(t_inner, var_name, index)), label.clone()),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::If(t1, t2, t3) => Spanned {
-                    v: Term::If(
-                        Box::new(walk_var_spanned(t1, var_name, index)),
-                        Box::new(walk_var_spanned(t2, var_name, index)),
-                        Box::new(walk_var_spanned(t3, var_name, index)),
-                    ),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-                Term::Let(t1, t2) => {
-                    let t1_new = walk_var_spanned(t1, var_name, index);
-                    let t2_new = walk_var_spanned(t2, var_name, index + 1);
-                    Spanned {
-                        v: Term::Let(Box::new(t1_new), Box::new(t2_new)),
-                        start: t.start,
-                        line: t.line,
-                        column: t.column,
-                    }
-                }
-                Term::Plet(p, t1, t2) => {
-                    let n = p.v.len();
-                    let t1_new = walk_var_spanned(t1, var_name, index + n);
-                    let t2_new = walk_var_spanned(t2, var_name, index + n);
-                    Spanned {
-                        v: Term::Plet(p.clone(), Box::new(t1_new), Box::new(t2_new)),
-                        start: t.start,
-                        line: t.line,
-                        column: t.column,
-                    }
-                }
-                Term::Tagging(_) => t.clone(),
-                Term::Case(t_case, bs) => {
-                    let t_case_new = walk_var_spanned(t_case, var_name, index);
-                    let bs_new = bs
-                        .iter()
-                        .map(|b| Arm {
-                            ptag: b.ptag.clone(),
-                            term: walk_var_spanned(&b.term, var_name, index + b.ptag.len()),
-                            ptag_pos: b.ptag_pos,
-                        })
-                        .collect::<Vec<_>>();
-                    Spanned {
-                        v: Term::Case(Box::new(t_case_new), bs_new),
-                        start: t.start,
-                        line: t.line,
-                        column: t.column,
-                    }
-                }
-                Term::Fix(t1) => Spanned {
-                    v: Term::Fix(Box::new(walk_var_spanned(t1, var_name, index))),
-                    start: t.start,
-                    line: t.line,
-                    column: t.column,
-                },
-            }
-        }
-
-        walk_pattern_spanned(spanned_term, pattern, 0)
     }
 }

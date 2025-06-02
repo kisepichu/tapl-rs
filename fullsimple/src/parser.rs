@@ -722,12 +722,12 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 column: i.get_utf8_column(),
             })
         })?;
-    
+
     // Create a spanned version of t2_renamed that preserves position information
     // We need to map the renamed term back to the original structure with positions
     fn preserve_positions(original: &Spanned<Term>, renamed: &Term) -> Spanned<Term> {
         use crate::span::Spanned;
-        
+
         match (&original.v, renamed) {
             (Term::TmpVar(_), Term::Var(_)) => {
                 // This is a variable that was renamed, preserve its position
@@ -738,17 +738,15 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                     column: original.column,
                 }
             }
-            (Term::App(o1, o2), Term::App(r1, r2)) => {
-                Spanned {
-                    v: Term::App(
-                        Box::new(preserve_positions(o1, &r1.v)),
-                        Box::new(preserve_positions(o2, &r2.v)),
-                    ),
-                    start: original.start,
-                    line: original.line,
-                    column: original.column,
-                }
-            }
+            (Term::App(o1, o2), Term::App(r1, r2)) => Spanned {
+                v: Term::App(
+                    Box::new(preserve_positions(o1, &r1.v)),
+                    Box::new(preserve_positions(o2, &r2.v)),
+                ),
+                start: original.start,
+                line: original.line,
+                column: original.column,
+            },
             _ => {
                 // For other cases, just use the original position with renamed content
                 Spanned {
@@ -760,9 +758,9 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
             }
         }
     }
-    
+
     let t2_spanned = preserve_positions(&t2.st, &t2_renamed);
-    
+
     Ok((
         i,
         Prg {
@@ -1019,7 +1017,9 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("term expected", 20, preceded(multispace0, parse_term)),
     )
     .parse(i)?;
-    let renamed = t.st.v.subst_type_name_spanned(name.st.v.as_str(), &ty.st.v, &t.st);
+    let renamed =
+        t.st.v
+            .subst_type_name_spanned(name.st.v.as_str(), &ty.st.v, &t.st);
     Ok((
         i,
         Prg {
@@ -1458,11 +1458,9 @@ mod tests {
                 ty: extract_type_structure(&tag.ty),
                 label: tag.label.clone(),
             }),
-                        Term::Case(t, arms) => Term::Case(
+            Term::Case(t, arms) => Term::Case(
                 Box::new(spanned(extract_term_structure(&t.v))),
-                arms.iter()
-                    .map(|arm| extract_arm_structure(arm))
-                    .collect(),
+                arms.iter().map(extract_arm_structure).collect(),
             ),
             Term::Fix(t) => Term::Fix(Box::new(spanned(extract_term_structure(&t.v)))),
         }
