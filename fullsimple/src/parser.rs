@@ -59,7 +59,9 @@ fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
         ))
     }
 }
-fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, (), ErrorWithPos> {
+fn parse_reserved_span(
+    ident: &'static str,
+) -> impl Fn(Span) -> IResult<Span, Prg<()>, ErrorWithPos> {
     move |i: Span| {
         let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
         let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
@@ -70,13 +72,24 @@ fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, ()
         if parsed != ident {
             Err(nom::Err::Error(ErrorWithPos {
                 message: format!("expected ident '{}'", ident),
-                level: 90,
+                level: 20,
                 kind: Some(nom::error::ErrorKind::Fail),
                 line: i.location_line(),
                 column: i.get_utf8_column(),
             }))
         } else {
-            Ok((i, ()))
+            Ok((
+                i,
+                Prg {
+                    st: Spanned {
+                        v: (),
+                        start: s0.location_offset(),
+                        line: s0.location_line(),
+                        column: s0.get_utf8_column(),
+                    },
+                    lasterr: None,
+                },
+            ))
         }
     }
 }
@@ -681,8 +694,21 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, p) = update_err("pattern expected", 20, preceded(multispace0, parse_pat)).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = parse_reserved_span("in").parse(i)?;
-    let (i, t2) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = p.lasterr.or(t1.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
+
     let (t2_renamed, t1_renamed, p_renamed, _n) =
         t2.st.v.subst_pat(&t1.st.v, &p.st.v, 0).map_err(|e| {
             nom::Err::Error(ErrorWithPos {
@@ -721,7 +747,7 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: p.lasterr.or(t1.lasterr).or(t2.lasterr),
+            lasterr: lasterr_so_far.or(t1.lasterr).or(t2.lasterr),
         },
     ))
 }
@@ -738,8 +764,21 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     .parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = parse_reserved_span("in").parse(i)?;
-    let (i, t2) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = name.lasterr.or(t1.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
+
     let renamed = t2.st.v.subst_name(name.st.v.as_str());
     Ok((
         i,
@@ -758,7 +797,7 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: name.lasterr.or(t1.lasterr).or(t2.lasterr),
+            lasterr: lasterr_so_far.or(t1.lasterr).or(t2.lasterr),
         },
     ))
 }
@@ -872,9 +911,20 @@ fn parse_case(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = parse_reserved_span("case").parse(i)?;
     let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = parse_reserved_span("of").parse(i)?;
-    let (i, arms) =
-        update_err("case arms expected", 20, preceded(multispace0, parse_arms)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = t.lasterr.clone();
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'of' expected", 60, parse_reserved_span("of")),
+    )
+    .parse(i)?;
+    let (i, arms) = chmax_err(
+        &lasterr_so_far,
+        update_err("case arms expected", 20, preceded(multispace0, parse_arms)),
+    )
+    .parse(i)?;
     Ok((
         i,
         Prg {
@@ -901,8 +951,20 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, ty) =
         update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
-    let (i, _) = parse_reserved_span("in").parse(i)?;
-    let (i, t) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = name.clone().lasterr.or(ty.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
     let renamed = t.st.v.subst_type_name(name.st.v.as_str(), &ty.st.v);
     Ok((
         i,
@@ -952,8 +1014,24 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("type expected", 20, preceded(multispace0, parse_type_space)).parse(i)?;
     let (i, _) = preceded(multispace0, tag("=")).parse(i)?;
     let (i, t1) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
-    let (i, _) = parse_reserved_span("in").parse(i)?;
-    let (i, t2) = update_err("term expected", 20, preceded(multispace0, parse_term)).parse(i)?;
+
+    // Accumulate errors so far
+    let lasterr_so_far = name
+        .clone()
+        .lasterr
+        .or(ty.lasterr.clone())
+        .or(t1.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'in' expected", 60, parse_reserved_span("in")),
+    )
+    .parse(i)?;
+    let (i, t2) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected", 20, preceded(multispace0, parse_term)),
+    )
+    .parse(i)?;
     let t1_renamed = t1.st.v.subst_name(name.st.v.as_str());
     let t2_renamed = t2.st.v.subst_name(name.st.v.as_str());
     Ok((

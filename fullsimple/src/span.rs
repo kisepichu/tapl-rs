@@ -77,6 +77,7 @@ impl nom::error::ParseError<Span<'_>> for ErrorWithPos {
     }
 
     fn or(self, other: Self) -> Self {
+        // println!("self: {:?}, other: {:?}", self, other);
         if self < other { other } else { self }
     }
 }
