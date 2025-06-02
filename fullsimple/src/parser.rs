@@ -70,7 +70,7 @@ fn parse_reserved_span(ident: &'static str) -> impl Fn(Span) -> IResult<Span, ()
         if parsed != ident {
             Err(nom::Err::Error(ErrorWithPos {
                 message: format!("expected ident '{}'", ident),
-                level: 10,
+                level: 90,
                 kind: Some(nom::error::ErrorKind::Fail),
                 line: i.location_line(),
                 column: i.get_utf8_column(),
@@ -698,7 +698,12 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         Prg {
             st: Spanned {
                 v: Term::Plet(
-                    p_renamed,
+                    Spanned {
+                        v: p_renamed,
+                        start: p.st.start,
+                        line: p.st.line,
+                        column: p.st.column,
+                    },
                     Box::new(Spanned {
                         v: t1_renamed,
                         start: t1.st.start,
@@ -1335,7 +1340,7 @@ mod tests {
                 Box::new(spanned(extract_term_structure(&t2.v))),
             ),
             Term::Plet(p, t1, t2) => Term::Plet(
-                extract_pattern_structure(p),
+                spanned(extract_pattern_structure(&p.v)),
                 Box::new(spanned(extract_term_structure(&t1.v))),
                 Box::new(spanned(extract_term_structure(&t2.v))),
             ),
@@ -1717,7 +1722,7 @@ case <Bool->Self, Unit->Self>:::0 true of
     #[case(
     r"let x:Bool = true in x",
     Some(Term::Plet(
-        Pattern::Var("0".to_string(), Type::Bool),
+        dummy_spanned(Pattern::Var("0".to_string(), Type::Bool)),
         Box::new(dummy_spanned(Term::True)),
         Box::new(dummy_spanned(Term::Var(0)))
     ))

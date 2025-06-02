@@ -603,21 +603,21 @@ fn test_parse_typing_eval(
     #[case] expected_eval: Option<&str>,
 ) {
     use fullsimple::eval::eval;
-    use fullsimple::parser::parse;
+    use fullsimple::parser::parse_spanned;
     use fullsimple::syntax::context::Context;
     use fullsimple::typing::type_of;
 
     println!("input= {}", input);
 
     let ctx = Context::default();
-    let actual = parse(input).ok();
+    let actual = parse_spanned(input).ok();
 
     if let Some(t) = actual {
         let ty = type_of(&ctx, &t).map(|t| t.to_string()).ok();
         println!("ty= {:?}", ty);
 
         if ty.is_some() {
-            let eval_result = eval(&t).map(|t| t.to_string()).ok();
+            let eval_result = eval(&t.v).map(|t| t.to_string()).ok();
             println!("eval= {:?}", eval_result);
             assert_eq!(ty, expected_type.map(|s| s.to_string()));
             assert_eq!(eval_result, expected_eval.map(|s| s.to_string()));

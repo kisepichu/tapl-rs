@@ -34,8 +34,8 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                let t = match parser::parse_spanned_and_render_err(line.as_str()) {
-                    Ok(spanned_t) => spanned_t.v,
+                let spanned_t = match parser::parse_spanned_and_render_err(line.as_str()) {
+                    Ok(spanned_t) => spanned_t,
                     Err((err_msg, err_display)) => {
                         println!("Parse Error: {}", err_msg);
                         println!("{}\n", err_display);
@@ -46,18 +46,22 @@ fn main() -> Result<()> {
 
                 let ctx = Context::default();
 
-                let ty = match type_of(&ctx, &t) {
+                let ty = match type_of(&ctx, &spanned_t) {
                     Ok(ty) => ty,
                     Err(e) => {
-                        println!("\ninput= {}", t);
-                        println!("{}\n", e);
+                        println!("\ninput= {}", spanned_t.v);
+                        println!("{}", e);
+                        println!(
+                            "{}\n",
+                            parser::display_position(line.as_str(), e.line, e.column)
+                        );
                         continue;
                     }
                 };
                 // println!("{:?}", ty);
 
-                println!("\ninput= {}\n     : {}", t, ty);
-                let t = match eval::eval(&t) {
+                println!("\ninput= {}\n     : {}", spanned_t.v, ty);
+                let t = match eval::eval(&spanned_t.v) {
                     Ok(t) => t,
                     Err(e) => {
                         println!("eval error: {}\n", e);

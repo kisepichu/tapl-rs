@@ -59,7 +59,7 @@ fn term_subst(j: usize, s: &Term, t: &Term) -> Result<Term, String> {
             )),
             Term::Plet(p, t1, t2) => {
                 let t1 = walk(j, s, c, &t1.v)?;
-                let t2 = walk(j, s, c + p.len() as isize, &t2.v)?;
+                let t2 = walk(j, s, c + p.v.len() as isize, &t2.v)?;
                 Ok(Term::Plet(
                     p.clone(),
                     Box::new(dummy_spanned(t1)),
@@ -217,7 +217,7 @@ fn eval1(t: &Term) -> Result<Term, String> {
             )),
         },
         Term::Plet(p, t1, t2) => match (&t1.v, &t2.v) {
-            (v1, t2) if v1.isval() => walk_pattern(p, v1, t2),
+            (v1, t2) if v1.isval() => walk_pattern(&p.v, v1, t2),
             _ => Ok(Term::Plet(
                 p.clone(),
                 Box::new(dummy_spanned(eval1(&t1.v)?)),

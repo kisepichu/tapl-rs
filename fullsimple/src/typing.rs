@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::{
-    span::dummy_spanned,
+    span::{ErrorWithPos, Spanned, dummy_spanned},
     syntax::{
         context::Context,
         pattern::{PTmpTag, Pattern},
@@ -38,33 +38,39 @@ fn types_equal_ignore_pos(ty1: &Type, ty2: &Type) -> bool {
     }
 }
 
-pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
-    match t {
+pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
+    match &t.v {
         Term::Var(xn) => {
             // println!("ctx = \n{}", ctx);
             match ctx.get(*xn) {
                 Some(ty) => Ok(ty.clone()),
-                None => Err(format!(
-                    "type check failed: {}\n: unbound variable {}",
-                    t, xn
-                )),
+                None => Err(ErrorWithPos {
+                    message: format!("type check failed: {}\n: unbound variable {}", t.v, xn),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                }),
             }
         }
-        Term::TmpVar(s) => Err(format!(
-            "type check failed: {}\n: undefined variable: {}",
-            t, s
-        )),
+        Term::TmpVar(s) => Err(ErrorWithPos {
+            message: format!("type check failed: {}\n: undefined variable: {}", t.v, s),
+            level: 80,
+            kind: None,
+            line: t.line,
+            column: t.column,
+        }),
         Term::Abs(ty1, t2) => {
             let ctx_ = ctx.clone().shift_and_push0(ty1.clone());
-            let ty2 = type_of(&ctx_, &t2.v)?;
+            let ty2 = type_of(&ctx_, t2)?;
             Ok(Type::Arr(
                 Box::new(dummy_spanned(ty1.clone())),
                 Box::new(dummy_spanned(ty2.clone())),
             ))
         }
         Term::App(t1, t2) => {
-            let ty1 = type_of(ctx, &t1.v)?;
-            let ty2 = type_of(ctx, &t2.v)?;
+            let ty1 = type_of(ctx, t1)?;
+            let ty2 = type_of(ctx, t2)?;
             match ty1 {
                 Type::Arr(ty11, ty12) => {
                     if types_equal_ignore_pos(&ty11.v, &ty2) {
@@ -76,16 +82,28 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                         } else {
                             t1_str[..20].to_string() + "..."
                         };
-                        Err(format!(
-                            "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
-                            t, t1_str, ty11.v, t2.v, ty2
-                        ))
+                        Err(ErrorWithPos {
+                            message: format!(
+                                "type check failed: {}\ntype of argument to the term {} is incorrect:\n  expected: {}, found: {}: {}",
+                                t.v, t1_str, ty11.v, t2.v, ty2
+                            ),
+                            level: 90,
+                            kind: None,
+                            line: t.line,
+                            column: t.column,
+                        })
                     }
                 }
-                _ => Err(format!(
-                    "type check failed: {}\n  expected arrow type, but found {}: {}",
-                    t, t1.v, ty1
-                )),
+                _ => Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected arrow type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                }),
             }
         }
         Term::Unit => Ok(Type::Unit),
@@ -93,107 +111,153 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
         Term::False => Ok(Type::Bool),
         Term::Zero => Ok(Type::Nat),
         Term::Succ(t1) => {
-            let ty1 = type_of(ctx, &t1.v)?;
+            let ty1 = type_of(ctx, t1)?;
             if types_equal_ignore_pos(&ty1, &Type::Nat) {
                 Ok(Type::Nat)
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected Nat type, but found {}: {}",
-                    t, t1.v, ty1
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected Nat type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
         Term::Pred(t1) => {
-            let ty1 = type_of(ctx, &t1.v)?;
+            let ty1 = type_of(ctx, t1)?;
             if types_equal_ignore_pos(&ty1, &Type::Nat) {
                 Ok(Type::Nat)
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected Nat type, but found {}: {}",
-                    t, t1.v, ty1
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected Nat type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
         Term::IsZero(t1) => {
-            let ty1 = type_of(ctx, &t1.v)?;
+            let ty1 = type_of(ctx, t1)?;
             if types_equal_ignore_pos(&ty1, &Type::Nat) {
                 Ok(Type::Bool)
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected Nat type, but found {}: {}",
-                    t, t1.v, ty1
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected Nat type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
         Term::Record(fields) => {
             let tyfields = fields
                 .iter()
                 .map(|field| {
-                    let ty = type_of(ctx, &field.term.v)?;
+                    let ty = type_of(ctx, &field.term)?;
                     Ok(TyField {
                         label: field.label.clone(),
                         ty: dummy_spanned(ty),
                     })
                 })
-                .collect::<Result<Vec<_>, String>>()?;
+                .collect::<Result<Vec<_>, ErrorWithPos>>()?;
             Ok(Type::TyRecord(tyfields))
         }
         Term::Projection(t1, label) => {
-            let ty1 = type_of(ctx, &t1.v)?;
+            let ty1 = type_of(ctx, t1)?;
             if let Type::TyRecord(fields) = ty1.clone() {
                 fields
                     .iter()
                     .find(|field| field.label == *label)
                     .map(|field| field.ty.v.clone())
-                    .ok_or_else(|| {
-                        format!(
+                    .ok_or_else(|| ErrorWithPos {
+                        message: format!(
                             "type check failed: {}\n  field {} not found in record type {}",
-                            t, label, ty1
-                        )
+                            t.v, label, ty1
+                        ),
+                        level: 90,
+                        kind: None,
+                        line: t.line,
+                        column: t.column,
                     })
             } else {
                 // println!("ctx = \n{}", ctx);
 
-                Err(format!(
-                    "type check failed: {}\n  expected record type, but found {}: {}",
-                    t, t1.v, ty1
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected record type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
         Term::If(t1, t2, t3) => {
-            let ty1 = type_of(ctx, &t1.v)?;
-            let ty2 = type_of(ctx, &t2.v)?;
-            let ty3 = type_of(ctx, &t3.v)?;
+            let ty1 = type_of(ctx, t1)?;
+            let ty2 = type_of(ctx, t2)?;
+            let ty3 = type_of(ctx, t3)?;
             if types_equal_ignore_pos(&ty1, &Type::Bool) && types_equal_ignore_pos(&ty2, &ty3) {
                 Ok(ty2)
             } else if !types_equal_ignore_pos(&ty2, &ty3) {
-                Err(format!(
-                    "type check failed: {}\n  arms of conditional have different types:\n  {}, {}",
-                    t, ty2, ty3
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  arms of conditional have different types:\n  {}, {}",
+                        t.v, ty2, ty3
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected boolean type, but found {}: {}",
-                    t, t1.v, ty1
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected boolean type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
         Term::Let(t1, t2) => {
-            let ty1 = type_of(ctx, &t1.v)?;
+            let ty1 = type_of(ctx, t1)?;
             let ctx_ = ctx.clone().shift_and_push0(ty1);
-            type_of(&ctx_, &t2.v)
+            type_of(&ctx_, t2)
         }
         Term::Plet(p, t1, t2) => {
-            let ty1 = type_of(ctx, &t1.v)?;
-            let pty = pat_type_of(ctx, p)?;
+            let ty1 = type_of(ctx, t1)?;
+            let pty = pat_type_of(ctx, &p.v)?;
             let ctx_ = pty.context.clone();
             if !types_equal_ignore_pos(&pty.ty, &ty1) {
-                return Err(format!(
-                    "type check failed: {}\n  pattern type {} does not match term type {}",
-                    t, pty.ty, ty1
-                ));
+                return Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  pattern type {} does not match term type {}",
+                        t.v, pty.ty, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                });
             }
-            type_of(&ctx_, &t2.v)
+            type_of(&ctx_, t2)
         }
         Term::Tagging(Tag { ty, label }) => {
             if let Type::TyTagging(tyfields) = ty {
@@ -201,11 +265,15 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                     .iter()
                     .find(|field| field.label == *label)
                     .map(|field| field.ty.clone())
-                    .ok_or_else(|| {
-                        format!(
+                    .ok_or_else(|| ErrorWithPos {
+                        message: format!(
                             "type check failed: {}\n  tag {} not found in tagging type {}",
-                            t, label, ty
-                        )
+                            t.v, label, ty
+                        ),
+                        level: 90,
+                        kind: None,
+                        line: t.line,
+                        column: t.column,
                     })?;
                 fn replace_self(ty: &Type, replace: &Type) -> Type {
                     match ty {
@@ -228,14 +296,20 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 }
                 Ok(replace_self(&ty_.v, ty))
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected tagging type, but found {}",
-                    t, ty
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected tagging type, but found {}",
+                        t.v, ty
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
-        Term::Case(t, arms) => {
-            let tyt = type_of(ctx, &t.v)?;
+        Term::Case(t_case, arms) => {
+            let tyt = type_of(ctx, t_case)?;
             match tyt.clone() {
                 Type::TyTagging(tyfields) => {
                     // none when arms.len() == 0
@@ -245,68 +319,104 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 
                         {
                             if arm.ptag.label != tyf.label {
-                                return Err(format!(
-                                    "type check failed: {}\n, case expression currently requires exact ordering of labels.\n  expected {}, but found {}",
-                                    t, tyf.label, arm.ptag.label
-                                ));
+                                return Err(ErrorWithPos {
+                                    message: format!(
+                                        "type check failed: {}\n, case expression currently requires exact ordering of labels.\n  expected {}, but found {}",
+                                        t.v, tyf.label, arm.ptag.label
+                                    ),
+                                    level: 90,
+                                    kind: None,
+                                    line: t.line,
+                                    column: t.column,
+                                });
                             }
                         }
                         if !types_equal_ignore_pos(&ptyarm.ty, &tyt) {
-                            return Err(format!(
-                                "type check failed: {}\n  pattern type {} does not match term type {}",
-                                t, ptyarm.ty, tyt
-                            ));
+                            return Err(ErrorWithPos {
+                                message: format!(
+                                    "type check failed: {}\n  pattern type {} does not match term type {}",
+                                    t.v, ptyarm.ty, tyt
+                                ),
+                                level: 90,
+                                kind: None,
+                                line: t.line,
+                                column: t.column,
+                            });
                         }
                         let ctx_ = ptyarm.context.clone();
-                        let tyarm = type_of(&ctx_, &arm.term.v)?;
+                        let tyarm = type_of(&ctx_, &arm.term)?;
 
                         if t_.is_none() {
                             t_ = Some((arm.term.v.clone(), tyarm));
                         } else if let Some((_, tyt_)) = &t_ {
                             if !types_equal_ignore_pos(tyt_, &tyarm) {
-                                return Err(format!(
-                                    "type check failed: {}\n  arms of case expression have different types:\n  {}: {},\n  {}: {}",
-                                    t,
-                                    if let Some((tt_, _)) = &t_ {
-                                        tt_
-                                    } else {
-                                        panic!(
-                                            "unreachable because arms.len() == 0 && 2 <= arms.len()"
-                                        )
-                                    },
-                                    t_.clone().expect("in let Some block").1,
-                                    arm.term.v,
-                                    tyarm
-                                ));
+                                return Err(ErrorWithPos {
+                                    message: format!(
+                                        "type check failed: {}\n  arms of case expression have different types:\n  {}: {},\n  {}: {}",
+                                        t.v,
+                                        if let Some((tt_, _)) = &t_ {
+                                            tt_
+                                        } else {
+                                            panic!(
+                                                "unreachable because arms.len() == 0 && 2 <= arms.len()"
+                                            )
+                                        },
+                                        t_.clone().expect("in let Some block").1,
+                                        arm.term.v,
+                                        tyarm
+                                    ),
+                                    level: 90,
+                                    kind: None,
+                                    line: t.line,
+                                    column: t.column,
+                                });
                             }
                         }
                     }
                     Ok(t_.expect("in let Some block").1)
                 }
-                _ => Err(format!(
-                    "type check failed: {}\n  case expressions currently only support tagging type.\n  expected tagging type, but found {}",
-                    t, tyt
-                )),
+                _ => Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  case expressions currently only support tagging type.\n  expected tagging type, but found {}",
+                        t.v, tyt
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                }),
             }
         }
         Term::Fix(t1) => {
-            let ty1 = type_of(ctx, &t1.v)?;
+            let ty1 = type_of(ctx, t1)?;
             if let Type::Arr(ty11, ty12) = ty1 {
                 if types_equal_ignore_pos(&ty11.v, &ty12.v) {
                     Ok(ty11.v.clone())
                 } else {
-                    Err(format!(
-                        "type check failed: {}\n  expected arrow type with same input and output types, but found {}: {}",
-                        t,
-                        t1.v,
-                        Type::Arr(ty11, ty12)
-                    ))
+                    Err(ErrorWithPos {
+                        message: format!(
+                            "type check failed: {}\n  expected arrow type with same input and output types, but found {}: {}",
+                            t.v,
+                            t1.v,
+                            Type::Arr(ty11, ty12)
+                        ),
+                        level: 90,
+                        kind: None,
+                        line: t.line,
+                        column: t.column,
+                    })
                 }
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected arrow type, but found {}: {}",
-                    t, t1.v, ty1
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected arrow type, but found {}: {}",
+                        t.v, t1.v, ty1
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: t.line,
+                    column: t.column,
+                })
             }
         }
     }
@@ -332,7 +442,7 @@ fn expand_self(ty: &Type, tyself: &Type) -> Type {
     }
 }
 
-fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
+fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, ErrorWithPos> {
     match p {
         Pattern::Var(_x, ty) => {
             let ctx_ = ctx.clone().shift_and_push0(ty.clone());
@@ -375,7 +485,7 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                         label: pf.label.clone(),
                         ty: dummy_spanned(pty.ty.clone()),
                     });
-                    Ok::<_, String>((
+                    Ok::<_, ErrorWithPos>((
                         acc_tyfs,
                         acc_add + 1 + pty.add,
                         acc_ctx.shift_and_push0(pty.ty),
@@ -406,11 +516,15 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                     .iter()
                     .find(|field| field.label == *label)
                     .map(|field| field.ty.v.clone())
-                    .ok_or_else(|| {
-                        format!(
+                    .ok_or_else(|| ErrorWithPos {
+                        message: format!(
                             "type check failed: {}\n  tag {} not found in tagging type {}",
                             p, label, ty
-                        )
+                        ),
+                        level: 90,
+                        kind: None,
+                        line: 1,
+                        column: 1,
                     })?;
 
                 let mut pty = PatType {
@@ -439,26 +553,44 @@ fn pat_type_of(ctx: &Context, p: &Pattern) -> Result<PatType, String> {
                             context: ctx_.clone(),
                         };
                     } else {
-                        return Err(format!(
-                            "type check failed: {}\n  expected arrow type, but found {}",
-                            p, ty
-                        ));
+                        return Err(ErrorWithPos {
+                            message: format!(
+                                "type check failed: {}\n  expected arrow type, but found {}",
+                                p, ty
+                            ),
+                            level: 90,
+                            kind: None,
+                            line: 1,
+                            column: 1,
+                        });
                     }
                 }
                 if types_equal_ignore_pos(&pty.ty, &Type::TySelf) {
                     pty.ty = ty.clone();
                 } else {
-                    return Err(format!(
-                        "type check failed: {}\n  number of arguments did not match",
-                        p,
-                    ));
+                    return Err(ErrorWithPos {
+                        message: format!(
+                            "type check failed: {}\n  number of arguments did not match",
+                            p,
+                        ),
+                        level: 90,
+                        kind: None,
+                        line: 1,
+                        column: 1,
+                    });
                 }
                 Ok(pty)
             } else {
-                Err(format!(
-                    "type check failed: {}\n  expected tagging type, but found {}",
-                    p, ty
-                ))
+                Err(ErrorWithPos {
+                    message: format!(
+                        "type check failed: {}\n  expected tagging type, but found {}",
+                        p, ty
+                    ),
+                    level: 90,
+                    kind: None,
+                    line: 1,
+                    column: 1,
+                })
             }
         }
     }
@@ -637,7 +769,7 @@ mod tests {
         use crate::parser;
 
         let ctx = Context::default();
-        let t = parser::parse(input).unwrap();
+        let t = parser::parse_spanned(input).unwrap();
         let ty = type_of(&ctx, &t);
         match expected {
             Some(ty2) => {

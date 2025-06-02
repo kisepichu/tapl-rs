@@ -67,6 +67,8 @@ where
                     column: i.get_utf8_column(),
                     kind: e.kind,
                 };
+
+                println!("e: {:?}, e_: {:?}", e.clone(), e_.clone());
                 let mx = std::cmp::max(e, e_);
                 nom::Err::Error(mx)
             }

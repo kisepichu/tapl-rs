@@ -53,7 +53,7 @@ pub enum Term {
     Tagging(Tag),
     If(Box<Spanned<Term>>, Box<Spanned<Term>>, Box<Spanned<Term>>),
     Let(Box<Spanned<Term>>, Box<Spanned<Term>>),
-    Plet(Pattern, Box<Spanned<Term>>, Box<Spanned<Term>>),
+    Plet(Spanned<Pattern>, Box<Spanned<Term>>, Box<Spanned<Term>>),
     Projection(Box<Spanned<Term>>, String),
     Case(Box<Spanned<Term>>, Vec<Arm>),
     Fix(Box<Spanned<Term>>),
@@ -153,14 +153,14 @@ impl fmt::Display for Term {
                     if has_arg_after {
                         format!(
                             "let {} = {} in ({})",
-                            p,
+                            p.v,
                             print(&t1.v, false, false),
                             print(&t2.v, false, false)
                         )
                     } else {
                         format!(
                             "let {} = {} in {}",
-                            p,
+                            p.v,
                             print(&t1.v, false, false),
                             print(&t2.v, false, false)
                         )
@@ -297,7 +297,7 @@ impl Term {
                     ))
                 }
                 Term::Plet(p, t1, t2) => {
-                    let len = p.len();
+                    let len = p.v.len();
                     let t1_shifted = shift_help(&t1.v, d, c)?;
                     let t2_shifted = shift_help(&t2.v, d, c + len)?;
                     Ok(Term::Plet(
@@ -386,7 +386,7 @@ impl Term {
                     Term::Let(Box::new(dummy_spanned(t1)), Box::new(dummy_spanned(t2)))
                 }
                 Term::Plet(p, t1, t2) => {
-                    let n = p.len();
+                    let n = p.v.len();
                     let t1 = walk(&t1.v, z, c + n);
                     let t2 = walk(&t2.v, z, c + n);
                     Term::Plet(
@@ -462,10 +462,14 @@ impl Term {
                 Term::Let(Box::new(dummy_spanned(t1)), Box::new(dummy_spanned(t2)))
             }
             Term::Plet(p, t1, t2) => {
-                let p = p.subst_type_name(type_name, ty2);
+                let p_new = p.v.subst_type_name(type_name, ty2);
                 let t1 = t1.v.subst_type_name(type_name, ty2);
                 let t2 = t2.v.subst_type_name(type_name, ty2);
-                Term::Plet(p, Box::new(dummy_spanned(t1)), Box::new(dummy_spanned(t2)))
+                Term::Plet(
+                    dummy_spanned(p_new),
+                    Box::new(dummy_spanned(t1)),
+                    Box::new(dummy_spanned(t2)),
+                )
             }
             Term::Tagging(tag) => Term::Tagging(Tag {
                 ty: tag.ty.subst_name(type_name, ty2),
