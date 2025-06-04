@@ -11,12 +11,6 @@ where
     F: Parser<Span<'a>, Output = O, Error = ErrorWithPos>,
 {
     move |i: Span<'a>| {
-        println!(
-            "i: {}, line: {}, column: {}",
-            i.fragment(),
-            i.location_line(),
-            i.get_utf8_column()
-        );
         parser
             .parse(i)
             .map(|(rest, v)| {
@@ -37,7 +31,6 @@ where
                         column: i.get_utf8_column(),
                         kind: e.kind,
                     };
-                    println!("Error: {:?}", e_);
                     nom::Err::Error(e_)
                 }
                 _ => {
@@ -100,10 +93,7 @@ where
                 };
 
                 let mx = std::cmp::max(e, e_);
-                println!(
-                    "---update_err: {}, line: {}, column: {}",
-                    mx.message, mx.line, mx.column
-                );
+
                 nom::Err::Error(mx)
             }
             _ => {
@@ -114,10 +104,6 @@ where
                     column: i.get_utf8_column(),
                     kind: None,
                 };
-                println!(
-                    "----update_err: {}, line: {}, column: {}",
-                    e.message, e.line, e.column
-                );
                 nom::Err::Error(e)
             }
         })

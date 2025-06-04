@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::{
-    parser::utils::{append_err, chmax_err, dbg, update_err, with_pos},
+    parser::utils::{append_err, chmax_err, update_err, with_pos},
     span::{ErrorWithPos, Prg, Span, Spanned},
     syntax::{
         pattern::{PTmpTag, PatField, Pattern},
@@ -807,12 +807,6 @@ fn parse_record(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(multispace0, char('{')).parse(i)?;
     let (i, fields) = preceded(multispace0, parse_fieldseq).parse(i)?;
-    println!(
-        "i: {}, line: {}, column: {}",
-        i.fragment(),
-        i.location_line(),
-        i.get_utf8_column()
-    );
 
     let (i, _) = chmax_err(
         &None, // No previous error for this context
@@ -853,23 +847,13 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         ),
     )
     .parse(i)?;
-    println!("- i: {}", i.fragment());
 
-    let (i, t1) = dbg(
-        "parse_plet term",
-        dbg(
-            "parse_plet chmax",
-            chmax_err(
-                &lasterr,
-                dbg(
-                    "parse_plet update_err",
-                    update_err(
-                        "term expected after '='",
-                        20,
-                        preceded(multispace0, parse_term),
-                    ),
-                ),
-            ),
+    let (i, t1) = chmax_err(
+        &lasterr,
+        update_err(
+            "term expected after '='",
+            20,
+            preceded(multispace0, parse_term),
         ),
     )
     .parse(i)?;
@@ -1450,32 +1434,29 @@ fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 
 /// <atom> ::= <encl> | <abs> | <if> | <let> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
 fn parse_atom(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    dbg(
-        "parse_atom",
-        preceded(
-            multispace0,
-            alt((
-                parse_letrec,
-                parse_fix,
-                parse_lettype,
-                parse_case,
-                parse_plet, // "let" pattern-based let
-                parse_let,  // "let" simple let
-                parse_if,
-                parse_succ,
-                parse_pred,
-                parse_iszero,
-                with_pos(map(parse_tagging, Term::Tagging)),
-                parse_record,
-                parse_zero,
-                parse_false,
-                parse_true,
-                parse_unit,
-                parse_abs,
-                parse_encl,
-                parse_var, // Must be last to avoid conflicting with reserved words
-            )),
-        ),
+    preceded(
+        multispace0,
+        alt((
+            parse_letrec,
+            parse_fix,
+            parse_lettype,
+            parse_case,
+            parse_plet, // "let" pattern-based let
+            parse_let,  // "let" simple let
+            parse_if,
+            parse_succ,
+            parse_pred,
+            parse_iszero,
+            with_pos(map(parse_tagging, Term::Tagging)),
+            parse_record,
+            parse_zero,
+            parse_false,
+            parse_true,
+            parse_unit,
+            parse_abs,
+            parse_encl,
+            parse_var, // Must be last to avoid conflicting with reserved words
+        )),
     )
     .parse(i)
 }
@@ -1592,6 +1573,7 @@ pub fn parse(input: &str) -> Result<Term, ErrorWithPos> {
 }
 
 pub fn display_position(input: &str, line: u32, column: usize) -> String {
+    println!();
     let lines: Vec<&str> = input.lines().collect();
     if line == 0 || (line as usize) > lines.len() {
         return "Invalid line number".to_string();
@@ -1605,7 +1587,7 @@ pub fn display_position(input: &str, line: u32, column: usize) -> String {
     for _ in 0..column.saturating_sub(1) {
         result.push(' ');
     }
-    result.push('^');
+    result.push_str("^\n");
     result
 }
 

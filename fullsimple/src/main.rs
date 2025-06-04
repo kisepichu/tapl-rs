@@ -52,7 +52,7 @@ fn main() -> Result<()> {
                         println!("\ninput= {}", spanned_t.v);
                         println!("{}", e);
                         println!(
-                            "{}\n",
+                            "{}",
                             parser::display_position(line.as_str(), e.line, e.column)
                         );
                         continue;

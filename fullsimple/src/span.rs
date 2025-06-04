@@ -46,17 +46,9 @@ impl Ord for ErrorWithPos {
 impl fmt::Display for ErrorWithPos {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(k) = self.kind {
-            write!(
-                f,
-                "{} at line {}, column {}: kind={:?}",
-                self.message, self.line, self.column, k,
-            )
+            write!(f, "{}: kind={:?}", self.message, k,)
         } else {
-            write!(
-                f,
-                "{} at line {}, column {}",
-                self.message, self.line, self.column
-            )
+            write!(f, "{}", self.message)
         }
     }
 }

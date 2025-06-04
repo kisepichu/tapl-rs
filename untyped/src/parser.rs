@@ -114,20 +114,20 @@ fn parse_term_space(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 pub fn display_position(input: &str, line: u32, column: usize) -> String {
     println!();
     let lines: Vec<&str> = input.lines().collect();
-    if lines.is_empty() {
-        return "\n^".to_string();
+    if line == 0 || (line as usize) > lines.len() {
+        return "Invalid line number".to_string();
     }
-    if line as usize > lines.len() {
-        return "error while displaying position".to_string();
+
+    let target_line = lines[(line - 1) as usize];
+    let mut result = String::new();
+    result.push_str(&format!("at line {}, column {}:\n", line, column));
+    result.push_str(&format!("  | {}\n", target_line));
+    result.push_str("  | ");
+    for _ in 0..column.saturating_sub(1) {
+        result.push(' ');
     }
-    let target_line = lines[line as usize - 1];
-    if target_line.is_empty() {
-        return format!("{}\n^", target_line);
-    }
-    if column > target_line.len() + 1 {
-        return "error while displaying position".to_string();
-    }
-    format!("{}\n", target_line) + &format!("{:>width$}^", "", width = column - 1)
+    result.push_str("^\n");
+    result
 }
 
 pub fn parse(input: &str) -> Result<Term, ErrorWithPos> {
