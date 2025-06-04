@@ -816,7 +816,7 @@ impl Term {
                 let (t_, t1_, pfs_r) = pfs_r.iter().zip(original_names).rev().enumerate().rfold(
                     (t_, t1_, vec![]),
                     |(acc_t, acc_t1, mut acc_pfs), (i, (pf, original_name))| match pf.pat.clone() {
-                        Pattern::Var(name, ty) => {
+                        Pattern::Var(_name, _ty) => {
                             acc_pfs.push(PatField {
                                 label: i.to_string(),
                                 pat: pf.pat.clone(),
