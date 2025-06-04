@@ -1,5 +1,3 @@
-// todo
-
 use nom::{IResult, Parser};
 
 use crate::span::{ErrorWithPos, Prg, Span, Spanned};
@@ -11,39 +9,15 @@ where
     F: Parser<Span<'a>, Output = O, Error = ErrorWithPos>,
 {
     move |i: Span<'a>| {
-        parser
-            .parse(i)
-            .map(|(rest, v)| {
-                let st = Spanned {
-                    v,
-                    start: i.location_offset(),
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                };
-                (rest, Prg { st, lasterr: None })
-            })
-            .map_err(|e| match e {
-                nom::Err::Error(e) => {
-                    let e_ = ErrorWithPos {
-                        message: format!("Parse error: {}", e.message),
-                        level: e.level,
-                        line: i.location_line(),
-                        column: i.get_utf8_column(),
-                        kind: e.kind,
-                    };
-                    nom::Err::Error(e_)
-                }
-                _ => {
-                    let e = ErrorWithPos {
-                        message: "Unknown error".to_string(),
-                        level: 100,
-                        line: i.location_line(),
-                        column: i.get_utf8_column(),
-                        kind: None,
-                    };
-                    nom::Err::Error(e)
-                }
-            })
+        parser.parse(i).map(|(rest, v)| {
+            let st = Spanned {
+                v,
+                start: i.location_offset(),
+                line: i.location_line(),
+                column: i.get_utf8_column(),
+            };
+            (rest, Prg { st, lasterr: None })
+        })
     }
 }
 
@@ -86,57 +60,18 @@ where
             nom::Err::Error(e) => {
                 let e_ = ErrorWithPos {
                     message: message.to_string(),
-                    level: level as u32,
+                    level,
                     line: i.location_line(),
                     column: i.get_utf8_column(),
                     kind: e.kind,
                 };
-
                 let mx = std::cmp::max(e, e_);
-
                 nom::Err::Error(mx)
             }
             _ => {
                 let e = ErrorWithPos {
                     message: message.to_string(),
-                    level: level as u32,
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                    kind: None,
-                };
-                nom::Err::Error(e)
-            }
-        })
-    }
-}
-
-pub fn append_err<'a, F, O>(
-    message: &str,
-    level: usize,
-    mut parser: F,
-) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Prg<O>, ErrorWithPos>
-where
-    F: Parser<Span<'a>, Output = Prg<O>, Error = ErrorWithPos>,
-{
-    move |i: Span<'a>| {
-        parser.parse(i).map_err(|e| match e {
-            nom::Err::Error(e) => {
-                let e = ErrorWithPos {
-                    message: format!(
-                        "{} at line {}, column {}\n {}",
-                        e.message, e.line, e.column, message
-                    ),
-                    level: level as u32,
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                    kind: None,
-                };
-                nom::Err::Error(e)
-            }
-            _ => {
-                let e = ErrorWithPos {
-                    message: message.to_string(),
-                    level: level as u32,
+                    level,
                     line: i.location_line(),
                     column: i.get_utf8_column(),
                     kind: None,
@@ -157,10 +92,17 @@ where
     move |i: Span<'a>| {
         parser.parse(i).map_err(|e| match e {
             nom::Err::Error(e) => {
+                let e_ = ErrorWithPos {
+                    message: e.message,
+                    level: e.level,
+                    line: i.location_line(),
+                    column: i.get_utf8_column(),
+                    kind: e.kind,
+                };
                 let mx = if let Some(lasterr) = lasterr.clone() {
-                    std::cmp::max(e, lasterr)
+                    std::cmp::max(e_, lasterr)
                 } else {
-                    e
+                    e_
                 };
                 nom::Err::Error(mx)
             }

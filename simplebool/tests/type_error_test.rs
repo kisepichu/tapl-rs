@@ -29,10 +29,12 @@ fn test_unknown_type_error_position() {
             assert!(error.contains("Unknown type: Nat"));
             // エラー位置が Nat の位置 (column 3) であることを確認
             let lines: Vec<&str> = position.lines().collect();
-            if lines.len() >= 2 {
-                let cursor_line = lines[1];
+            if lines.len() >= 3 {
+                let cursor_line = lines[2];
                 let cursor_pos = cursor_line.find('^').unwrap_or(0);
-                assert_eq!(cursor_pos, 2); // 0-indexed, so column 3 is index 2
+                assert_eq!(cursor_pos, 6); // 0-indexed, so column 3 is index 2
+            } else {
+                panic!("Position information is not formatted as expected");
             }
         }
         Ok(_) => panic!("Expected parse error for unknown type"),

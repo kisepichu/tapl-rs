@@ -1,36 +1,35 @@
-# Simply typed lambda calculus($\lambda_{\rightarrow}$) + Bool
+# Simply typed lambda calculus($\lambda_{\rightarrow}$)
+
+\+ an infinite collection of uninterpreted base types
 
 ```
-$ cargo run --bin simplebool
+$ cargo run --bin simplebase
 ```
 
-Figure 9-1(p.78), Figure 8-1(p.70), Figure 3-1(p.25)
+(この言語は本文にはありません)
 
 単純型付き λ 計算は、型無し λ 計算を、型付けされた項のみ評価するようにし、関数の型 $\rightarrow$ を導入したもの。
 
 ## Syntax
 
-`fn parse` in [`simplebool/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/parser.rs), `enum Term` in [`simplebool/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/syntax/term.rs)
+`fn parse` in [`simplebase/src/parser.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/parser.rs), `enum Term` in [`simplebool/src/syntax/term.rs`](https://github.com/kisepichu/tapl-rs/blob/main/simplebool/src/syntax/term.rs)
 
 ### Concrete syntax
 
 ```bnf
 <term> ::= <app>
 <app>  ::= <atom> <app> | <atom>
-<atom> ::= <encl> | <abs> | <var> | <true> | <false> | <if>
+<atom> ::= <encl> | <abs> | <var>
 <encl> ::= "(" <term> ")"
 <abs> ::= "\:" <ty> "." <term>
-<if> ::= "if" <term> "then" <term> "else" <term>
 <var> ::= number
-<true> ::= "true"
-<false> ::= "false"
 
 <ty> ::= <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 <tyarrsub> ::= "->" <ty>
 <tyatom> ::= <tyencl> | <tybool>
 <tyencl> ::= "(" <ty> ")"
-<tybool> ::= "Bool"
+<tyvar> ::= string
 ```
 
 ### Abstract syntax
@@ -41,18 +40,13 @@ t ::=&   &\quad (\text{terms}) \\
   \quad \mid\ &x &\quad (\text{variable}) \\
   \quad \mid\ &\lambda\mathord{:}T.t_2  &\quad (\text{abstraction}) \\
   \quad \mid\ &t_1\ t_2 &\quad (\text{application}) \\
-  \quad \mid\ &\mathrm{true} &\quad (\text{constant true}) \\
-  \quad \mid\ &\mathrm{false} &\quad (\text{constant false}) \\
-  \quad \mid\ &\mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 &\quad (\text{if}) \\
   \\
 v ::=&   &\quad (\text{values}) \\
   \quad \mid\ &\lambda\mathord{:}T.t_2 &\quad (\text{abstraction value}) \\
-  \quad \mid\ &\mathrm{true} &\quad (\text{true}) \\
-  \quad \mid\ &\mathrm{false} &\quad (\text{false}) \\
   \\
 T ::=&   &\quad (\text{types}) \\
   \quad \mid\ &T_1 \rightarrow T_2 &\quad (\text{arrow}) \\
-  \quad \mid\ &\mathrm{Bool} &\quad (\text{boolean}) \\
+  \quad \mid\ &\mathtt{A} &\quad (\text{base type}) \\
   \\
 \Gamma ::=&   &\quad (\text{contexts}) \\
   \quad \mid\ &\varnothing &\quad (\text{empty}) \\
@@ -62,9 +56,9 @@ T ::=&   &\quad (\text{types}) \\
 
 ### parsing
 
-- `<var>`, `<abs>`, `<true>`, `<false>`, `<if>` が、それぞれ対応する term に変換される。
+- `<var>`, `<abs>` が、それぞれ対応する term に変換される。
 - `<app>` は、 `<atom>` の列が左結合で application に変換される。
-- `<tybool>` は boolean に変換され、 `<tyarr>` は、 `<tyatom>` と "->" の列が右結合で arrow に変換される。
+- `<tyarr>` と `<tyvar>` は、それぞれ対応する type に変換される。
 
 ## evaluation
 
@@ -77,12 +71,6 @@ T ::=&   &\quad (\text{types}) \\
 \frac{t_2 \rightarrow t_2'}{v_1\ t_2 \rightarrow v_1\ t_2'} \quad &\text{(E-APP2)} \\
 \\
 \frac{t_1 \rightarrow t_1'}{t_1\ t_2 \rightarrow t_1'\ t_2} \quad &\text{(E-APP1)} \\
-\\
-\frac{}{\mathrm{if} \ \mathrm{true} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_2} \quad &\text{(E-IFTRUE)} \\
-\\
-\frac{}{\mathrm{if} \ \mathrm{false} \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow t_3} \quad &\text{(E-IFFALSE)} \\
-\\
-\frac{t_1 \rightarrow t_1'}{\mathrm{if} \ t_1 \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3 \rightarrow \mathrm{if} \ t_1' \ \mathrm{then} \ t_2 \ \mathrm{else} \ t_3} \quad &\text{(E-IF)} \\
 \end{align*}
 ```
 
@@ -98,11 +86,6 @@ T ::=&   &\quad (\text{types}) \\
 \\
 \frac{{\Gamma \vdash t_1 \mathord{:} T_{11} \rightarrow T_{12}} \quad {\Gamma \vdash t_2 \mathord{:} T_{21}}}{\Gamma \vdash t_1\ t_2 \mathord{:} T_{12} \rightarrow T_{21}} \quad &\text{(T-APP)} \\
 \\
-\frac{}{\Gamma \vdash \mathrm{true} : \mathrm{Bool}} \quad &\text{(T-TRUE)} \\
-\\
-\frac{}{\Gamma \vdash \mathrm{false} : \mathrm{Bool}} \quad &\text{(T-FALSE)} \\
-\\
-\frac{\Gamma \vdash t_1 \mathord{:} \mathrm{Bool} \quad \Gamma \vdash t_2 \mathord{:} T \quad \Gamma \vdash t_3 \mathord{:} T}{\Gamma \vdash \mathrm{if}\ t_1\ \mathrm{then}\ t_2\ \mathrm{else}\ t_3 : T} \quad &\text{(T-IF)} \\
 \end{align*}
 ```
 
@@ -112,13 +95,13 @@ T ::=&   &\quad (\text{types}) \\
 
 ```
 $ cargo run --bin simplebool
-> (\:Bool.if 0 then \:Bool.\:Bool.1 else \:Bool.\:Bool.0) true
-input: (\:Bool.if 0 then (\:Bool.\:Bool.1) else (\:Bool.\:Bool.0)) true: Bool->Bool->Bool
-   ->* \:Bool.\:Bool.1
+> \:P.\:Q.1
+input= \:P.\:Q.1: P->Q->P
+   ->* \:P.\:Q.1
 
-> (\:Bool->Bool->Bool.0 true false) \:Bool.\:Bool.0
-input: (\:Bool->Bool->Bool.0 true false) \:Bool.\:Bool.0: Bool
-   ->* false
+> (\:A->A.0) \:A.0
+input= (\:A->A.0) \:A.0: A->A
+   ->* \:A.0
 
 >
 ```

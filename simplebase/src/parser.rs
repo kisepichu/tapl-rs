@@ -7,7 +7,7 @@ use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alphanumeric1, char, digit1, multispace0},
+    character::complete::{alpha1, alphanumeric1, char, digit1, multispace0},
     combinator::{map, map_res},
     multi::many0,
     sequence::preceded,
@@ -45,39 +45,46 @@ fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     Ok((i, t))
 }
 
-/// <tybool> ::= "Bool" | unknown type name for error
-fn parse_tybool(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+/// <ident> ::= <ident> (alphabet|digit) | alphabet
+fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-
-    // まず alphanumeric1 でタイプ名を取得
-    let (i, type_name) = alphanumeric1(i)?;
-
-    match type_name.fragment() {
-        &"Bool" => Ok((
-            i,
-            Prg {
-                st: Spanned {
-                    v: Type::Bool,
-                    start: start_pos.0,
-                    line: start_pos.1,
-                    column: start_pos.2,
-                },
-                lasterr: None,
+    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
+    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
+    let s = once(s0.fragment())
+        .chain(s.iter().map(|x| x.fragment()))
+        .fold("".to_string(), |acc, c| acc + c);
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: s,
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
             },
-        )),
-        name => Err(nom::Err::Error(ErrorWithPos {
-            message: format!("Unknown type: {}", name),
-            level: 90,
-            kind: Some(nom::error::ErrorKind::Tag),
-            line: start_pos.1,
-            column: start_pos.2,
-        })),
-    }
+            lasterr: None,
+        },
+    ))
 }
 
 /// <tyatom> ::= <tyencl> | <tybool>
 fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
-    preceded(multispace0, alt((parse_tyencl, parse_tybool))).parse(i)
+    preceded(
+        multispace0,
+        alt((
+            parse_tyencl,
+            map(parse_ident_span, |ident| Prg {
+                st: Spanned {
+                    v: Type::TyVar(ident.st.v),
+                    start: ident.st.start,
+                    line: ident.st.line,
+                    column: ident.st.column,
+                },
+                lasterr: ident.lasterr,
+            }),
+        )),
+    )
+    .parse(i)
 }
 
 /// <tyarrsub> ::= "->" <ty>
@@ -136,16 +143,6 @@ fn parse_ty_space(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     Ok((i, t))
 }
 
-/// <false> ::= "false"
-fn parse_false(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    with_pos(map(tag("false"), |_| Term::False)).parse(i)
-}
-
-/// <true> ::= "true"
-fn parse_true(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    with_pos(map(tag("true"), |_| Term::True)).parse(i)
-}
-
 /// <var> ::= number
 fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (_i, _check) = alphanumeric1.parse(i)?;
@@ -157,35 +154,6 @@ fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         })),
     )
     .parse(i)
-}
-
-/// <if> ::= "if" <term> "then" <term> "else" <term>
-fn parse_if(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, _) = preceded(multispace0, tag("if")).parse(i)?;
-    let (i, t1) = update_err("condition expected", 20, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("then")).parse(i)?;
-    let (i, t2) = update_err("then branch expected", 20, parse_term).parse(i)?;
-    let (i, _) = preceded(multispace0, tag("else")).parse(i)?;
-    let (i, t3) = chmax_err(
-        &t1.lasterr.or(t2.lasterr),
-        update_err("else branch expected", 20, parse_term),
-    )
-    .parse(i)?;
-
-    let result = Term::If(Box::new(t1.st), Box::new(t2.st), Box::new(t3.st));
-    Ok((
-        i,
-        Prg {
-            st: Spanned {
-                v: result,
-                start: start_pos.0,
-                line: start_pos.1,
-                column: start_pos.2,
-            },
-            lasterr: t3.lasterr,
-        },
-    ))
 }
 
 /// <abs> ::= "\:" <ty> "." <term>
@@ -230,18 +198,7 @@ fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 
 /// <atom> ::= <var> | <abs> | <encl> | <true> | <false> | <if>
 fn parse_atom(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    preceded(
-        multispace0,
-        alt((
-            parse_if,
-            parse_false,
-            parse_true,
-            parse_encl,
-            parse_abs,
-            parse_var,
-        )),
-    )
-    .parse(i)
+    preceded(multispace0, alt((parse_encl, parse_abs, parse_var))).parse(i)
 }
 
 /// <app> ::= <atom> <app> | <atom>
@@ -410,13 +367,6 @@ mod test {
                 Box::new(spanned(extract_term_structure(&t1.v))),
                 Box::new(spanned(extract_term_structure(&t2.v))),
             ),
-            Term::True => Term::True,
-            Term::False => Term::False,
-            Term::If(t1, t2, t3) => Term::If(
-                Box::new(spanned(extract_term_structure(&t1.v))),
-                Box::new(spanned(extract_term_structure(&t2.v))),
-                Box::new(spanned(extract_term_structure(&t3.v))),
-            ),
         }
     }
 
@@ -424,17 +374,11 @@ mod test {
     #[case("1", Some(Term::Var(1)))]
     #[case(
         r"\:Bool.0 ",
-        Some(Term::Abs(Type::Bool, Box::new(spanned(Term::Var(0)))))
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0)))))
     )]
-    #[case(r" true", Some(Term::True))]
-    #[case(r" false ", Some(Term::False))]
     #[case(
-        r"if true then false else true",
-        Some(Term::If(
-            Box::new(spanned(Term::True)),
-            Box::new(spanned(Term::False)),
-            Box::new(spanned(Term::True))
-        ))
+        r"\:P.\:Q.0 1",
+        Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(0))), Box::new(spanned(Term::Var(1)))))))))))
     )]
     #[case(r"\", None)]
     #[case(r"(", None)]

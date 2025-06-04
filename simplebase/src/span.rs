@@ -1,5 +1,5 @@
+use nom::error::ParseError;
 use nom_locate::LocatedSpan;
-use std::fmt;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
@@ -11,19 +11,19 @@ pub struct Spanned<T> {
     pub column: usize,
 }
 
-impl<T: fmt::Display> fmt::Display for Spanned<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.v)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub struct ErrorWithPos {
     pub message: String,
-    pub level: u32,
+    pub level: usize,
     pub kind: Option<nom::error::ErrorKind>,
     pub line: u32,
     pub column: usize,
+}
+
+#[derive(Debug)]
+pub struct Prg<T> {
+    pub st: Spanned<T>,
+    pub lasterr: Option<ErrorWithPos>,
 }
 
 impl PartialOrd for ErrorWithPos {
@@ -31,7 +31,6 @@ impl PartialOrd for ErrorWithPos {
         Some(self.cmp(other))
     }
 }
-
 impl Ord for ErrorWithPos {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         (self.level, self.line, self.column, self.message.len()).cmp(&(
@@ -43,19 +42,9 @@ impl Ord for ErrorWithPos {
     }
 }
 
-impl fmt::Display for ErrorWithPos {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(k) = self.kind {
-            write!(f, "{}: kind={:?}", self.message, k,)
-        } else {
-            write!(f, "{}", self.message)
-        }
-    }
-}
-
-impl nom::error::ParseError<Span<'_>> for ErrorWithPos {
-    fn from_error_kind(input: Span, kind: nom::error::ErrorKind) -> Self {
-        ErrorWithPos {
+impl<'a> ParseError<Span<'a>> for ErrorWithPos {
+    fn from_error_kind(input: Span<'a>, kind: nom::error::ErrorKind) -> Self {
+        Self {
             message: "unexpected token".to_string(),
             level: 10,
             kind: Some(kind),
@@ -64,12 +53,11 @@ impl nom::error::ParseError<Span<'_>> for ErrorWithPos {
         }
     }
 
-    fn append(_input: Span, _kind: nom::error::ErrorKind, other: Self) -> Self {
+    fn append(_input: Span<'a>, _kind: nom::error::ErrorKind, other: Self) -> Self {
         other
     }
 
     fn or(self, other: Self) -> Self {
-        // println!("self: {:?}, other: {:?}", self, other);
         if self < other { other } else { self }
     }
 }
@@ -86,18 +74,20 @@ impl<E: std::fmt::Display> nom::error::FromExternalError<Span<'_>, E> for ErrorW
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Prg<T> {
-    pub st: Spanned<T>,
-    pub lasterr: Option<ErrorWithPos>,
-}
-
-// Helper function for creating Spanned<T> in code
-pub fn dummy_spanned<T>(value: T) -> Spanned<T> {
-    Spanned {
-        v: value,
-        start: 0,
-        line: 1,
-        column: 1,
+impl std::fmt::Display for ErrorWithPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if let Some(k) = self.kind {
+            write!(
+                f,
+                "{} at line {}, column {}: kind={:?}",
+                self.message, self.line, self.column, k,
+            )
+        } else {
+            write!(
+                f,
+                "{} at line {}, column {}",
+                self.message, self.line, self.column
+            )
+        }
     }
 }
