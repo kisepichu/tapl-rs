@@ -599,6 +599,37 @@ let six = succ (succ (succ three)) in
     Some(r"{0:Bool, 1:Bool, 2:Bool, 3:Bool}"),
     Some(r"{0=true, 1=true, 2=true, 3=true}")
 )]
+#[case(
+    r"let {x:Bool, y:{z:Bool, w:Bool}} = {x=true, y={z=true, w=false}} in x",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"let {x:Bool, y:{z:Bool, w:Bool}} = {x=true, y={true, false}} in x",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"let {x:Bool, y:{Bool, Bool}} = {x=true, y={true, false}} in x",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(r"let {x:Bool, y:{Bool, Bool}} = {x=true, y=false} in x", None, None)]
+#[case(
+    r"let {x:Bool, y:{z:Bool, w:Bool}} = {x=true, y={true, false}} in y",
+    Some(r"{0:Bool, 1:Bool}"),
+    Some(r"{0=true, 1=false}")
+)]
+#[case(
+    r"let {x:Bool, y:{z:Bool, w:Bool}} = {x=true, y={true, false}} in z",
+    Some(r"Bool"),
+    Some(r"true")
+)]
+#[case(
+    r"let {x:Bool, y:{z:Bool, w:Bool}} = {x=true, y={true, false}} in w",
+    Some(r"Bool"),
+    Some(r"false")
+)]
 // #[case(
 //     r"
 //

@@ -4,7 +4,7 @@ use super::{
     pattern::{PTmpTag, PatField, Pattern},
     r#type::Type,
 };
-use crate::span::Spanned;
+use crate::{span::Spanned, syntax::r#type::TyField};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
@@ -778,61 +778,91 @@ impl Term {
                         }
                 });
                 // inside patterns
-                let (t_, t1_, pfs_r) = pfs.iter().enumerate().try_rfold(
-                    (self.clone(), t1.clone(), vec![]),
-                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
-                        Pattern::Var(label, ty) => {
+                let (t_, t1_, pfs_r, original_names) = pfs.iter().enumerate().try_rfold(
+                    (self.clone(), t1.clone(), vec![], vec![]),
+                    |(acc_t, acc_t1, mut acc_pfs, mut acc_original_names), (i, pf)| match pf
+                        .pat
+                        .clone()
+                    {
+                        Pattern::Var(label, _ty) => {
+                            acc_original_names.push(label.clone());
                             acc_pfs.push(PatField {
                                 label,
-                                pat: Pattern::Var((offset + i).to_string(), ty),
+                                pat: Pattern::Var((offset + i).to_string(), _ty),
                             });
-                            Ok((acc_t, acc_t1, acc_pfs))
+                            Ok((acc_t, acc_t1, acc_pfs, acc_original_names))
                         }
                         _ => {
                             let len = pf.pat.len();
                             n -= len;
+                            println!("inside pattern found: {}", pf.pat);
+                            println!("acc_t1: {}", acc_t1);
                             let (acc_t_, acc_t1_, pi, ni) = acc_t
                                 .subst_pat(&acc_t1, &pf.pat, offset + n)
                                 .map_err(|_| "internal error: subst_pat")?;
                             if ni != len {
                                 return Err("internal error: len check failed");
                             }
+                            acc_original_names.push(pf.label.clone());
                             acc_pfs.push(PatField {
                                 label: pf.label.clone(),
                                 pat: pi,
                             });
-                            Ok((acc_t_, acc_t1_, acc_pfs))
+                            Ok((acc_t_, acc_t1_, acc_pfs, acc_original_names))
                         }
                     },
                 )?;
                 // 0..n patterns
-                let (t_, t1_, pfs_r) = pfs_r.iter().rev().enumerate().rfold(
+                let (t_, t1_, pfs_r) = pfs_r.iter().zip(original_names).rev().enumerate().rfold(
                     (t_, t1_, vec![]),
-                    |(acc_t, acc_t1, mut acc_pfs), (i, pf)| match pf.pat.clone() {
-                        Pattern::Var(name, _) => {
+                    |(acc_t, acc_t1, mut acc_pfs), (i, (pf, original_name))| match pf.pat.clone() {
+                        Pattern::Var(_name, _ty) => {
                             acc_pfs.push(PatField {
                                 label: i.to_string(),
                                 pat: pf.pat.clone(),
                             });
+                            println!("Var name: {}", original_name);
                             (
                                 acc_t
-                                    .subst_name(name.as_str())
                                     .shift(1)
-                                    .expect("plus shift does not fail"),
+                                    .expect("plus shift does not fail")
+                                    .subst_name(&original_name),
                                 acc_t1.subst_label(&pf.label, i.to_string().as_str()),
                                 acc_pfs,
                             )
                         }
                         _ => {
+                            fn pat_type_parsing(pat: &Pattern) -> Type {
+                                match pat {
+                                    Pattern::Var(_, ty) => ty.clone(),
+                                    Pattern::Record(pfs) => Type::TyRecord(
+                                        pfs.iter()
+                                            .map(|pf| TyField {
+                                                label: pf.label.clone(),
+                                                ty: Spanned {
+                                                    v: pat_type_parsing(&pf.pat),
+                                                    start: 0, // todo
+                                                    line: 0,
+                                                    column: 0,
+                                                },
+                                            })
+                                            .collect::<Vec<_>>(),
+                                    ),
+                                    Pattern::TmpTagging(ptag) => ptag.ty.clone(),
+                                }
+                            }
+
+                            let _ty = pat_type_parsing(&pf.pat);
                             acc_pfs.push(PatField {
                                 label: i.to_string(),
                                 pat: pf.pat.clone(),
                             });
+                            println!("_ name: {}", original_name);
                             (
                                 acc_t
-                                    .subst_name(&pf.label)
                                     .shift(1)
-                                    .expect("plus shift does not fail"),
+                                    .expect("plus shift does not fail")
+                                    .subst_name(&original_name),
                                 acc_t1.subst_label(&pf.label, i.to_string().as_str()),
                                 acc_pfs,
                             )
