@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::{
-    parser::utils::{append_err, chmax_err, update_err, with_pos},
+    parser::utils::{append_err, chmax_err, dbg, update_err, with_pos},
     span::{ErrorWithPos, Prg, Span, Spanned},
     syntax::{
         pattern::{PTmpTag, PatField, Pattern},
@@ -108,18 +108,28 @@ fn parse_labelorindex_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> 
 // <tyfield> ::= <label> ":" <ty> | <ty>
 fn parse_tyfield_tywithlabel(i: Span) -> IResult<Span, (Option<String>, Prg<Type>), ErrorWithPos> {
     let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
-    
+
     let lasterr_so_far = label.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("':' expected after label in type field", 50, preceded(multispace0, with_pos(char(':'))))
-    ).parse(i)?;
-    
+        update_err(
+            "':' expected after label in type field",
+            50,
+            preceded(multispace0, with_pos(char(':'))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, ty) = chmax_err(
         &lasterr_so_far,
-        update_err("type expected after ':'", 20, preceded(multispace0, parse_type_space))
-    ).parse(i)?;
-    
+        update_err(
+            "type expected after ':'",
+            20,
+            preceded(multispace0, parse_type_space),
+        ),
+    )
+    .parse(i)?;
+
     Ok((i, (Some(label.st.v), ty)))
 }
 fn parse_tyfield_ty(i: Span) -> IResult<Span, (Option<String>, Prg<Type>), ErrorWithPos> {
@@ -154,12 +164,17 @@ fn parse_tyrecord(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(multispace0, char('{')).parse(i)?;
     let (i, fields) = preceded(multispace0, parse_tyfieldseq).parse(i)?;
-    
+
     let (i, _) = chmax_err(
         &None, // No previous error for this context
-        update_err("'}' expected to close type record", 50, preceded(multispace0, with_pos(char('}'))))
-    ).parse(i)?;
-    
+        update_err(
+            "'}' expected to close type record",
+            50,
+            preceded(multispace0, with_pos(char('}'))),
+        ),
+    )
+    .parse(i)?;
+
     Ok((
         i,
         Prg {
@@ -179,12 +194,17 @@ fn parse_tytagging(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(multispace0, char('<')).parse(i)?;
     let (i, fields) = preceded(multispace0, parse_tyfieldseq).parse(i)?;
-    
+
     let (i, _) = chmax_err(
         &None, // No previous error for this context
-        update_err("'>' expected to close type tagging", 50, preceded(multispace0, with_pos(char('>'))))
-    ).parse(i)?;
-    
+        update_err(
+            "'>' expected to close type tagging",
+            50,
+            preceded(multispace0, with_pos(char('>'))),
+        ),
+    )
+    .parse(i)?;
+
     Ok((
         i,
         Prg {
@@ -427,18 +447,28 @@ fn parse_patfield_patwithlabel(
     i: Span,
 ) -> IResult<Span, (Option<String>, Prg<Pattern>), ErrorWithPos> {
     let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
-    
+
     let lasterr_so_far = label.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("':' expected after label in pattern field", 50, preceded(multispace0, with_pos(char(':'))))
-    ).parse(i)?;
-    
+        update_err(
+            "':' expected after label in pattern field",
+            50,
+            preceded(multispace0, with_pos(char(':'))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, pat) = chmax_err(
         &lasterr_so_far,
-        update_err("pattern expected after ':'", 20, preceded(multispace0, parse_pat))
-    ).parse(i)?;
-    
+        update_err(
+            "pattern expected after ':'",
+            20,
+            preceded(multispace0, parse_pat),
+        ),
+    )
+    .parse(i)?;
+
     Ok((i, (Some(label.st.v), pat)))
 }
 fn parse_patfield_pat(i: Span) -> IResult<Span, (Option<String>, Prg<Pattern>), ErrorWithPos> {
@@ -489,13 +519,18 @@ fn parse_patrecord(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(multispace0, char('{')).parse(i)?;
     let (i, fields) = preceded(multispace0, parse_patfieldseq).parse(i)?;
-    
+
     let lasterr_so_far = fields.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("'}' expected to close pattern record", 50, preceded(multispace0, with_pos(char('}'))))
-    ).parse(i)?;
-    
+        update_err(
+            "'}' expected to close pattern record",
+            50,
+            preceded(multispace0, with_pos(char('}'))),
+        ),
+    )
+    .parse(i)?;
+
     Ok((
         i,
         Prg {
@@ -514,18 +549,28 @@ fn parse_patrecord(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
 fn parse_patvar(i: Span) -> IResult<Span, Prg<Pattern>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
-    
+
     let lasterr_so_far = label.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("':' expected after variable name in pattern", 50, preceded(multispace0, with_pos(char(':'))))
-    ).parse(i)?;
-    
+        update_err(
+            "':' expected after variable name in pattern",
+            50,
+            preceded(multispace0, with_pos(char(':'))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, ty) = chmax_err(
         &lasterr_so_far,
-        update_err("type expected after ':'", 20, preceded(multispace0, parse_type))
-    ).parse(i)?;
-    
+        update_err(
+            "type expected after ':'",
+            20,
+            preceded(multispace0, parse_type),
+        ),
+    )
+    .parse(i)?;
+
     Ok((
         i,
         Prg {
@@ -670,18 +715,28 @@ fn parse_iszero(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 /// <tagging> ::= <ty> ":::" <labelorindex>
 fn parse_tagging(i: Span) -> IResult<Span, Tag, ErrorWithPos> {
     let (i, ty) = preceded(multispace0, parse_tyatom).parse(i)?;
-    
+
     let lasterr_so_far = ty.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("':::' expected after type in tagging", 50, preceded(multispace0, with_pos(tag(":::"))))
-    ).parse(i)?;
-    
+        update_err(
+            "':::' expected after type in tagging",
+            50,
+            preceded(multispace0, with_pos(tag(":::"))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, label) = chmax_err(
         &lasterr_so_far,
-        update_err("label or index expected after ':::'", 20, preceded(multispace0, parse_labelorindex_span))
-    ).parse(i)?;
-    
+        update_err(
+            "label or index expected after ':::'",
+            20,
+            preceded(multispace0, parse_labelorindex_span),
+        ),
+    )
+    .parse(i)?;
+
     Ok((
         i,
         Tag {
@@ -694,18 +749,28 @@ fn parse_tagging(i: Span) -> IResult<Span, Tag, ErrorWithPos> {
 /// <field> ::= <label> "=" <term> | <term>
 fn parse_field_twithlabel(i: Span) -> IResult<Span, (Option<String>, Prg<Term>), ErrorWithPos> {
     let (i, label) = preceded(multispace0, parse_ident_span).parse(i)?;
-    
+
     let lasterr_so_far = label.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("'=' expected after label in record field", 50, preceded(multispace0, with_pos(char('='))))
-    ).parse(i)?;
-    
+        update_err(
+            "'=' expected after label in record field",
+            50,
+            preceded(multispace0, with_pos(char('='))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, term) = chmax_err(
         &lasterr_so_far,
-        update_err("term expected after '='", 20, preceded(multispace0, parse_term_space))
-    ).parse(i)?;
-    
+        update_err(
+            "term expected after '='",
+            20,
+            preceded(multispace0, parse_term_space),
+        ),
+    )
+    .parse(i)?;
+
     Ok((i, (Some(label.st.v), term)))
 }
 fn parse_field_t(i: Span) -> IResult<Span, (Option<String>, Prg<Term>), ErrorWithPos> {
@@ -742,12 +807,23 @@ fn parse_record(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(multispace0, char('{')).parse(i)?;
     let (i, fields) = preceded(multispace0, parse_fieldseq).parse(i)?;
-    
+    println!(
+        "i: {}, line: {}, column: {}",
+        i.fragment(),
+        i.location_line(),
+        i.get_utf8_column()
+    );
+
     let (i, _) = chmax_err(
         &None, // No previous error for this context
-        update_err("'}' expected to close record", 50, preceded(multispace0, with_pos(char('}'))))
-    ).parse(i)?;
-    
+        update_err(
+            "'}' expected to close record",
+            50,
+            preceded(multispace0, with_pos(char('}'))),
+        ),
+    )
+    .parse(i)?;
+
     Ok((
         i,
         Prg {
@@ -766,31 +842,53 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = parse_reserved_span("let").parse(i)?;
     let (i, p) = update_err("pattern expected", 20, preceded(multispace0, parse_pat)).parse(i)?;
-    
-    let lasterr_so_far = p.lasterr.clone();
-    let (i, _) = chmax_err(
-        &lasterr_so_far,
-        update_err("'=' expected after pattern in let", 50, preceded(multispace0, with_pos(tag("="))))
-    ).parse(i)?;
-    
-    let (i, t1) = chmax_err(
-        &lasterr_so_far,
-        update_err("term expected after '='", 20, preceded(multispace0, parse_term))
-    ).parse(i)?;
+
+    let lasterr = p.lasterr.clone();
+    let (i, Prg { st: _, lasterr }) = chmax_err(
+        &lasterr,
+        update_err(
+            "'=' expected after pattern in let",
+            50,
+            preceded(multispace0, with_pos(tag("="))),
+        ),
+    )
+    .parse(i)?;
+    println!("- i: {}", i.fragment());
+
+    let (i, t1) = dbg(
+        "parse_plet term",
+        dbg(
+            "parse_plet chmax",
+            chmax_err(
+                &lasterr,
+                dbg(
+                    "parse_plet update_err",
+                    update_err(
+                        "term expected after '='",
+                        20,
+                        preceded(multispace0, parse_term),
+                    ),
+                ),
+            ),
+        ),
+    )
+    .parse(i)?;
 
     // Accumulate errors so far
-    let lasterr_so_far = p.lasterr.or(t1.lasterr.clone());
+    let lasterr_so_far = lasterr.or(t1.lasterr.clone());
 
     let (i, _) = chmax_err(
         &lasterr_so_far,
         update_err("'in' expected", 60, parse_reserved_span("in")),
     )
     .parse(i)?;
+    let lasterr_so_far = lasterr_so_far.or(t1.lasterr.clone());
     let (i, t2) = chmax_err(
         &lasterr_so_far,
         update_err("term expected", 20, preceded(multispace0, parse_term)),
     )
     .parse(i)?;
+    let lasterr_so_far = lasterr_so_far.or(t2.lasterr.clone());
 
     let (t2_renamed, t1_renamed, p_renamed, _n) =
         t2.st.v.subst_pat(&t1.st.v, &p.st.v, 0).map_err(|e| {
@@ -864,7 +962,7 @@ fn parse_plet(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: lasterr_so_far.or(t1.lasterr).or(t2.lasterr),
+            lasterr: lasterr_so_far,
         },
     ))
 }
@@ -879,17 +977,27 @@ fn parse_let(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         preceded(multispace0, parse_ident_span),
     )
     .parse(i)?;
-    
+
     let lasterr_so_far = name.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("'=' expected after identifier in let", 50, preceded(multispace0, with_pos(tag("="))))
-    ).parse(i)?;
-    
+        update_err(
+            "'=' expected after identifier in let",
+            50,
+            preceded(multispace0, with_pos(tag("="))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, t1) = chmax_err(
         &lasterr_so_far,
-        update_err("term expected after '='", 20, preceded(multispace0, parse_term))
-    ).parse(i)?;
+        update_err(
+            "term expected after '='",
+            20,
+            preceded(multispace0, parse_term),
+        ),
+    )
+    .parse(i)?;
 
     // Accumulate errors so far
     let lasterr_so_far = name.lasterr.or(t1.lasterr.clone());
@@ -989,17 +1097,27 @@ fn parse_arm(i: Span) -> IResult<Span, Prg<Arm>, ErrorWithPos> {
                 column: i.get_utf8_column(),
             })
         })?;
-    
+
     let lasterr_so_far = ptag.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("'=>' expected after pattern in case arm", 50, preceded(multispace0, with_pos(tag("=>"))))
-    ).parse(i)?;
-    
+        update_err(
+            "'=>' expected after pattern in case arm",
+            50,
+            preceded(multispace0, with_pos(tag("=>"))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, t) = chmax_err(
         &lasterr_so_far,
-        update_err("term expected after '=>'", 20, preceded(multispace0, parse_term))
-    ).parse(i)?;
+        update_err(
+            "term expected after '=>'",
+            20,
+            preceded(multispace0, parse_term),
+        ),
+    )
+    .parse(i)?;
 
     let (t_renamed, ptag_renamed, _) = t.st.v.subst_ptag(&ptag.st.v, 0).map_err(|e| {
         nom::Err::Error(ErrorWithPos {
@@ -1097,17 +1215,27 @@ fn parse_lettype(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         preceded(multispace0, parse_ident_span),
     )
     .parse(i)?;
-    
+
     let lasterr_so_far = name.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("'=' expected after type name", 50, preceded(multispace0, with_pos(tag("="))))
-    ).parse(i)?;
-    
+        update_err(
+            "'=' expected after type name",
+            50,
+            preceded(multispace0, with_pos(tag("="))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, ty) = chmax_err(
         &lasterr_so_far,
-        update_err("type expected after '='", 20, preceded(multispace0, parse_type_space))
-    ).parse(i)?;
+        update_err(
+            "type expected after '='",
+            20,
+            preceded(multispace0, parse_type_space),
+        ),
+    )
+    .parse(i)?;
 
     // Accumulate errors so far
     let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
@@ -1163,28 +1291,48 @@ fn parse_letrec(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         preceded(multispace0, parse_ident_span),
     )
     .parse(i)?;
-    
+
     let lasterr_so_far = name.lasterr.clone();
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("':' expected after identifier in letrec", 50, preceded(multispace0, with_pos(char(':'))))
-    ).parse(i)?;
-    
+        update_err(
+            "':' expected after identifier in letrec",
+            50,
+            preceded(multispace0, with_pos(char(':'))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, ty) = chmax_err(
         &lasterr_so_far,
-        update_err("type expected after ':'", 20, preceded(multispace0, parse_type_space))
-    ).parse(i)?;
-    
+        update_err(
+            "type expected after ':'",
+            20,
+            preceded(multispace0, parse_type_space),
+        ),
+    )
+    .parse(i)?;
+
     let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("'=' expected after type in letrec", 50, preceded(multispace0, with_pos(tag("="))))
-    ).parse(i)?;
-    
+        update_err(
+            "'=' expected after type in letrec",
+            50,
+            preceded(multispace0, with_pos(tag("="))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, t1) = chmax_err(
         &lasterr_so_far,
-        update_err("term expected after '='", 20, preceded(multispace0, parse_term))
-    ).parse(i)?;
+        update_err(
+            "term expected after '='",
+            20,
+            preceded(multispace0, parse_term),
+        ),
+    )
+    .parse(i)?;
 
     // Accumulate errors so far
     let lasterr_so_far = lasterr_so_far.or(t1.lasterr.clone());
@@ -1233,17 +1381,23 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
     let (i, name) = opt(parse_ident_span).parse(i)?;
-    
+
     let lasterr_so_far = name.as_ref().and_then(|n| n.lasterr.clone());
     let (i, _) = chmax_err(
         &lasterr_so_far,
-        update_err("':' expected after '\\' or variable name in lambda", 50, preceded(multispace0, with_pos(char(':'))))
-    ).parse(i)?;
-    
+        update_err(
+            "':' expected after '\\' or variable name in lambda",
+            50,
+            preceded(multispace0, with_pos(char(':'))),
+        ),
+    )
+    .parse(i)?;
+
     let (i, ty) = chmax_err(
         &lasterr_so_far,
-        update_err("type expected after ':'", 20, parse_type_space)
-    ).parse(i)?;
+        update_err("type expected after ':'", 20, parse_type_space),
+    )
+    .parse(i)?;
 
     let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
 
@@ -1252,8 +1406,11 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         update_err("'.' expected after type in lambda", 50, with_pos(char('.'))),
     )
     .parse(i)?;
-    let (i, t) =
-        chmax_err(&lasterr_so_far, update_err("term expected after '.'", 20, parse_term)).parse(i)?;
+    let (i, t) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected after '.'", 20, parse_term),
+    )
+    .parse(i)?;
 
     let result = match name.clone() {
         Some(name) => {
@@ -1293,29 +1450,32 @@ fn parse_encl(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 
 /// <atom> ::= <encl> | <abs> | <if> | <let> | <let> | <case> | <var> | <unit> | <true> | <false> | <record> | <tagging>
 fn parse_atom(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
-    preceded(
-        multispace0,
-        alt((
-            parse_letrec,
-            parse_fix,
-            parse_lettype,
-            parse_case,
-            parse_plet, // "let" pattern-based let
-            parse_let,  // "let" simple let
-            parse_if,
-            parse_succ,
-            parse_pred,
-            parse_iszero,
-            with_pos(map(parse_tagging, Term::Tagging)),
-            parse_record,
-            parse_zero,
-            parse_false,
-            parse_true,
-            parse_unit,
-            parse_abs,
-            parse_encl,
-            parse_var, // Must be last to avoid conflicting with reserved words
-        )),
+    dbg(
+        "parse_atom",
+        preceded(
+            multispace0,
+            alt((
+                parse_letrec,
+                parse_fix,
+                parse_lettype,
+                parse_case,
+                parse_plet, // "let" pattern-based let
+                parse_let,  // "let" simple let
+                parse_if,
+                parse_succ,
+                parse_pred,
+                parse_iszero,
+                with_pos(map(parse_tagging, Term::Tagging)),
+                parse_record,
+                parse_zero,
+                parse_false,
+                parse_true,
+                parse_unit,
+                parse_abs,
+                parse_encl,
+                parse_var, // Must be last to avoid conflicting with reserved words
+            )),
+        ),
     )
     .parse(i)
 }
@@ -1348,47 +1508,27 @@ fn parse_postfix(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
 fn parse_app(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, first) = parse_postfix.parse(i)?;
     let (i, rest) = many0(parse_postfix).parse(i)?;
-    if let Err(lasterr) = parse_postfix.parse(i) {
-        match lasterr {
-            nom::Err::Error(lasterr) => {
-                let st = rest.into_iter().fold(first.st, |acc, arg| Spanned {
-                    start: acc.start,
-                    line: acc.line,
-                    column: acc.column,
-                    v: Term::App(Box::new(acc), Box::new(arg.st)),
-                });
-                Ok((
-                    i,
-                    Prg {
-                        st,
-                        lasterr: Some(lasterr),
-                    },
-                ))
-            }
-            e => Err(nom::Err::Error(ErrorWithPos {
-                message: format!("internal error: {}", e),
-                level: 100,
-                kind: None,
-                line: i.location_line(),
-                column: i.get_utf8_column(),
-            })),
-        }
-    } else {
-        Err(nom::Err::Error(ErrorWithPos {
-            message: "internal error: many0 did not take it to the end".to_string(),
-            level: 100,
-            kind: None,
-            line: i.location_line(),
-            column: i.get_utf8_column(),
-        }))
-    }
+    let lasterr = first
+        .lasterr
+        .clone()
+        .or(rest.iter().rev().find_map(|r| r.lasterr.clone()));
+    let t = rest.into_iter().fold(first.st, |acc, arg| Spanned {
+        start: acc.start,
+        line: acc.line,
+        column: acc.column,
+        v: Term::App(Box::new(acc), Box::new(arg.st)),
+    });
+    Ok((i, Prg { st: t, lasterr }))
 }
 
 // <seq> ::= <app> ";" <seq> | <app>
 fn parse_seq(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (i, first) = parse_app.parse(i)?;
     let (i, rest) = many0(preceded(multispace0, preceded(char(';'), parse_seq))).parse(i)?;
-    let lasterr = first.lasterr.clone();
+    let lasterr = first
+        .lasterr
+        .clone()
+        .or(rest.iter().rev().find_map(|r| r.lasterr.clone()));
     let t = rest.into_iter().fold(first.st, |acc, t| Spanned {
         v: Term::App(
             Box::new(Spanned {

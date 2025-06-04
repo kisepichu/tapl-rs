@@ -11,15 +11,46 @@ where
     F: Parser<Span<'a>, Output = O, Error = ErrorWithPos>,
 {
     move |i: Span<'a>| {
-        parser.parse(i).map(|(rest, v)| {
-            let st = Spanned {
-                v,
-                start: i.location_offset(),
-                line: i.location_line(),
-                column: i.get_utf8_column(),
-            };
-            (rest, Prg { st, lasterr: None })
-        })
+        println!(
+            "i: {}, line: {}, column: {}",
+            i.fragment(),
+            i.location_line(),
+            i.get_utf8_column()
+        );
+        parser
+            .parse(i)
+            .map(|(rest, v)| {
+                let st = Spanned {
+                    v,
+                    start: i.location_offset(),
+                    line: i.location_line(),
+                    column: i.get_utf8_column(),
+                };
+                (rest, Prg { st, lasterr: None })
+            })
+            .map_err(|e| match e {
+                nom::Err::Error(e) => {
+                    let e_ = ErrorWithPos {
+                        message: format!("Parse error: {}", e.message),
+                        level: e.level,
+                        line: i.location_line(),
+                        column: i.get_utf8_column(),
+                        kind: e.kind,
+                    };
+                    println!("Error: {:?}", e_);
+                    nom::Err::Error(e_)
+                }
+                _ => {
+                    let e = ErrorWithPos {
+                        message: "Unknown error".to_string(),
+                        level: 100,
+                        line: i.location_line(),
+                        column: i.get_utf8_column(),
+                        kind: None,
+                    };
+                    nom::Err::Error(e)
+                }
+            })
     }
 }
 
@@ -69,6 +100,10 @@ where
                 };
 
                 let mx = std::cmp::max(e, e_);
+                println!(
+                    "---update_err: {}, line: {}, column: {}",
+                    mx.message, mx.line, mx.column
+                );
                 nom::Err::Error(mx)
             }
             _ => {
@@ -79,6 +114,10 @@ where
                     column: i.get_utf8_column(),
                     kind: None,
                 };
+                println!(
+                    "----update_err: {}, line: {}, column: {}",
+                    e.message, e.line, e.column
+                );
                 nom::Err::Error(e)
             }
         })
@@ -132,17 +171,10 @@ where
     move |i: Span<'a>| {
         parser.parse(i).map_err(|e| match e {
             nom::Err::Error(e) => {
-                let e_ = ErrorWithPos {
-                    message: e.message,
-                    level: e.level,
-                    line: i.location_line(),
-                    column: i.get_utf8_column(),
-                    kind: e.kind,
-                };
                 let mx = if let Some(lasterr) = lasterr.clone() {
-                    std::cmp::max(e_, lasterr)
+                    std::cmp::max(e, lasterr)
                 } else {
-                    e_
+                    e
                 };
                 nom::Err::Error(mx)
             }
