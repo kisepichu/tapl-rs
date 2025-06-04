@@ -795,8 +795,6 @@ impl Term {
                         _ => {
                             let len = pf.pat.len();
                             n -= len;
-                            println!("inside pattern found: {}", pf.pat);
-                            println!("acc_t1: {}", acc_t1);
                             let (acc_t_, acc_t1_, pi, ni) = acc_t
                                 .subst_pat(&acc_t1, &pf.pat, offset + n)
                                 .map_err(|_| "internal error: subst_pat")?;
@@ -821,7 +819,6 @@ impl Term {
                                 label: i.to_string(),
                                 pat: pf.pat.clone(),
                             });
-                            println!("Var name: {}", original_name);
                             (
                                 acc_t
                                     .shift(1)
@@ -857,7 +854,6 @@ impl Term {
                                 label: i.to_string(),
                                 pat: pf.pat.clone(),
                             });
-                            println!("_ name: {}", original_name);
                             (
                                 acc_t
                                     .shift(1)

@@ -100,12 +100,10 @@ fn walk_pattern(p: &Pattern, v1: &Term, t2: &Term) -> Result<Term, String> {
             let mut t2 = t2.clone();
             if let Term::Record(fs) = v1 {
                 for (_pf, f) in pfs.iter().zip(fs.iter()) {
-                    println!("inside: {}: {}", _pf.label, f.term.v);
                     t2 = term_subst_top(&f.term.v, &t2)?;
                 }
                 for (pf, f) in pfs.iter().zip(fs.iter()) {
                     if !matches!(&pf.pat, Pattern::Var(_, _)) {
-                        println!("outside: {}: {}", pf.label, f.term.v);
                         t2 = walk_pattern(&pf.pat, &f.term.v, &t2)?;
                     }
                 }
