@@ -13,6 +13,7 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
                     Ok(Term::Var(*x))
                 }
             }
+            Term::TmpVar(_) => Ok(t.clone()),
             Term::Abs(ty, t1) => Ok(Term::Abs(
                 ty.clone(),
                 Box::new(Spanned {
@@ -51,6 +52,7 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
                     Ok(Term::Var(*k))
                 }
             }
+            Term::TmpVar(_) => Ok(t.clone()),
             Term::Abs(ty, t1) => Ok(Term::Abs(
                 ty.clone(),
                 Box::new(Spanned {

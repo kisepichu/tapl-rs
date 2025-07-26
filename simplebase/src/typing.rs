@@ -26,6 +26,10 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
                 t, x
             )),
         },
+        Term::TmpVar(s) => Err(format!(
+            "type check failed: {}\n: unbound variable {}",
+            t, s
+        )),
         Term::Abs(ty, t2) => {
             let ctx = ctx.clone().push(ty.clone());
             let ty2 = type_of(&ctx, &t2.v)?;
@@ -85,6 +89,13 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
                 column: t.column,
             }),
         },
+        Term::TmpVar(s) => Err(ErrorWithPos {
+            message: format!("type check failed: {}\n: unbound variable {}", t.v, s),
+            level: 100,
+            kind: None,
+            line: t.line,
+            column: t.column,
+        }),
         Term::Abs(ty, t2) => {
             let ctx = ctx.clone().push(ty.clone());
             let ty2 = type_of_spanned(&ctx, t2)?;
@@ -174,7 +185,31 @@ fn extract_type_structure(ty: &Type) -> Type {
     Some(Type::Arr(Box::new(spanned_type(Type::TyVar("Bool".to_string()))), Box::new(spanned_type(Type::TyVar("Bool".to_string())))))
 )]
 #[case(
+    r"\x:Bool.x",
+    Some(Type::Arr(Box::new(spanned_type(Type::TyVar("Bool".to_string()))), Box::new(spanned_type(Type::TyVar("Bool".to_string())))))
+)]
+#[case(
     r"\:Bool.\:Bool.0",
+    Some(Type::Arr(
+        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+        )))
+    ))
+)]
+#[case(
+    r"\x:Bool.\y:Bool.x",
+    Some(Type::Arr(
+        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+        )))
+    ))
+)]
+#[case(
+    r"\x:Bool.\y:Bool.y",
     Some(Type::Arr(
         Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
         Box::new(spanned_type(Type::Arr(
@@ -196,13 +231,33 @@ fn extract_type_structure(ty: &Type) -> Type {
         ))),
     ))
 )]
+#[case(
+    r"\f:Bool->Bool.f",
+    Some(Type::Arr(
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+        ))),
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+        ))),
+    ))
+)]
 #[case(r"(\:Bool->Bool.0) \:Bool.0", 
     Some(Type::Arr(
         Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
         Box::new(spanned_type(Type::TyVar("Bool".to_string())))
     ))
 )]
+#[case(r"(\f:Bool->Bool.f) \x:Bool.x", 
+    Some(Type::Arr(
+        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+        Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+    ))
+)]
 #[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
+#[case(r"(\f:(Bool->Bool)->Bool.0) \x:Bool.x", None)]
 fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
     use crate::parser;
     println!("input: {}", input);

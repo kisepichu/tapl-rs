@@ -20,7 +20,7 @@ pub struct ErrorWithPos {
     pub column: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Prg<T> {
     pub st: Spanned<T>,
     pub lasterr: Option<ErrorWithPos>,
