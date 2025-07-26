@@ -8,7 +8,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0},
-    combinator::{map, map_res},
+    combinator::{map, map_res, opt},
     multi::many0,
     sequence::preceded,
 };
@@ -20,9 +20,9 @@ mod utils;
 // <app>  ::= <atom> <app> | <atom>
 // <atom> ::= <encl> | <abs> | <var> | <true> | <false> | <if>
 // <encl> ::= "(" <term> ")"
-// <abs> ::= "\:" <ty> "." <term>
+// <abs> ::= "\" <ident>? ":" <ty> "." <term>
 // <if> ::= "if" <term> "then" <term> "else" <term>
-// <var> ::= number
+// <var> ::= number | <ident>
 // <true> ::= "true"
 // <false> ::= "false"
 
@@ -143,8 +143,12 @@ fn parse_ty_space(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     Ok((i, t))
 }
 
-/// <var> ::= number
+/// <var> ::= number | <ident>
 fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    preceded(multispace0, alt((parse_varnum, parse_varstr))).parse(i)
+}
+
+fn parse_varnum(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let (_i, _check) = alphanumeric1.parse(i)?;
     update_err(
         "variable must be numeric",
@@ -156,20 +160,66 @@ fn parse_var(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     .parse(i)
 }
 
-/// <abs> ::= "\:" <ty> "." <term>
+fn parse_varstr(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
+    let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
+    let (i, s) = parse_ident_span(i)?;
+    Ok((
+        i,
+        Prg {
+            st: Spanned {
+                v: Term::TmpVar(s.st.v),
+                start: start_pos.0,
+                line: start_pos.1,
+                column: start_pos.2,
+            },
+            lasterr: s.lasterr,
+        },
+    ))
+}
+
+/// <abs> ::= "\" <ident>? ":" <ty> "." <term>
 fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
     let (i, _) = preceded(char('\\'), multispace0).parse(i)?;
-    let (i, _) = preceded(char(':'), multispace0).parse(i)?;
-    let (i, ty) = update_err("type expected", 20, parse_ty_space).parse(i)?;
+    let (i, name) = opt(parse_ident_span).parse(i)?;
+
+    let lasterr_so_far = name.as_ref().and_then(|n| n.lasterr.clone());
     let (i, _) = chmax_err(
-        &ty.lasterr,
-        update_err("'.' expected", 50, with_pos(char('.'))),
+        &lasterr_so_far,
+        update_err(
+            "':' expected after '\\' or variable name in lambda",
+            50,
+            preceded(multispace0, with_pos(char(':'))),
+        ),
     )
     .parse(i)?;
-    let (i, t) = chmax_err(&ty.lasterr, update_err("term expected", 20, parse_term)).parse(i)?;
 
-    let result = Term::Abs(ty.st.v, Box::new(t.st));
+    let (i, ty) = chmax_err(
+        &lasterr_so_far,
+        update_err("type expected after ':'", 20, parse_ty_space),
+    )
+    .parse(i)?;
+
+    let lasterr_so_far = lasterr_so_far.or(ty.lasterr.clone());
+
+    let (i, _) = chmax_err(
+        &lasterr_so_far,
+        update_err("'.' expected after type in lambda", 50, with_pos(char('.'))),
+    )
+    .parse(i)?;
+    let (i, t) = chmax_err(
+        &lasterr_so_far,
+        update_err("term expected after '.'", 20, parse_term),
+    )
+    .parse(i)?;
+
+    let result = match name.clone() {
+        Some(name) => {
+            let renamed = t.st.v.subst_name_spanned(&name.st.v, &t.st);
+            Term::Abs(ty.st.v, Box::new(renamed))
+        }
+        None => Term::Abs(ty.st.v, Box::new(t.st)),
+    };
     Ok((
         i,
         Prg {
@@ -179,7 +229,7 @@ fn parse_abs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
                 line: start_pos.1,
                 column: start_pos.2,
             },
-            lasterr: ty.lasterr.or(t.lasterr),
+            lasterr: lasterr_so_far.or(t.lasterr),
         },
     ))
 }
@@ -360,6 +410,7 @@ mod test {
     fn extract_term_structure(term: &Term) -> Term {
         match term {
             Term::Var(x) => Term::Var(*x),
+            Term::TmpVar(s) => Term::TmpVar(s.clone()),
             Term::Abs(ty, t) => {
                 Term::Abs(ty.clone(), Box::new(spanned(extract_term_structure(&t.v))))
             }
@@ -377,8 +428,24 @@ mod test {
         Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0)))))
     )]
     #[case(
+        r"\x:Bool.x",
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0)))))
+    )]
+    #[case(
+        r"\x:Bool.\y:Bool.x",
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(1))))))))
+    )]
+    #[case(
+        r"\x:Bool.\y:Bool.y",
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0))))))))
+    )]
+    #[case(
         r"\:P.\:Q.0 1",
         Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(0))), Box::new(spanned(Term::Var(1)))))))))))
+    )]
+    #[case(
+        r"\x:P.\y:Q.x y",
+        Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(1))), Box::new(spanned(Term::Var(0)))))))))))
     )]
     #[case(r"\", None)]
     #[case(r"(", None)]
