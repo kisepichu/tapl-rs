@@ -1,4 +1,4 @@
 [workspace]
 
-members = [ "fullsimple", "simplebool", "simplebase", "untyped", ]
+members = [ "simplelambdamu", "fullsimple", "simplebool", "simplebase", "untyped", ]
 resolver = "3"

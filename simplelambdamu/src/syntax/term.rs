@@ -1,0 +1,114 @@
+use std::fmt;
+
+use super::r#type::Type;
+use crate::span::Spanned;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Term {
+    Var(usize),
+    TmpVar(String),
+    Abs(Type, Box<Spanned<Term>>),
+    MAbs(Type, Box<Spanned<Term>>),
+    App(Box<Spanned<Term>>, Box<Spanned<Term>>),
+}
+
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn p(term: &Term, has_arg_after: bool, is_app_right: bool) -> String {
+            match term {
+                Term::Var(x) => format!("{}", x),
+                Term::TmpVar(x) => x.to_string(),
+                Term::Abs(ty, t) => {
+                    if has_arg_after {
+                        format!("(\\:{}.{})", ty, p(&t.v, false, false))
+                    } else {
+                        format!("\\:{}.{}", ty, p(&t.v, false, false))
+                    }
+                }
+                Term::MAbs(ty, t) => {
+                    if has_arg_after {
+                        format!("(/:{}.{})", ty, p(&t.v, false, false))
+                    } else {
+                        format!("/:{}.{}", ty, p(&t.v, false, false))
+                    }
+                }
+                Term::App(t1, t2) => {
+                    if is_app_right {
+                        format!(
+                            "({} {})",
+                            p(&t1.v, true, false),
+                            p(&t2.v, has_arg_after, true)
+                        )
+                    } else {
+                        format!(
+                            "{} {}",
+                            p(&t1.v, true, false),
+                            p(&t2.v, has_arg_after, true)
+                        )
+                    }
+                }
+            }
+        }
+        write!(f, "{}", p(self, false, false))
+    }
+}
+
+impl Term {
+    pub fn isval(&self) -> bool {
+        matches!(self, Term::Abs(_, _))
+    }
+
+    /// 位置情報を保持しながら変数名を数値に変換する
+    pub fn subst_name_spanned(
+        &self,
+        zero_name: &str,
+        spanned_term: &Spanned<Term>,
+    ) -> Spanned<Term> {
+        use crate::span::Spanned;
+
+        fn walk_spanned(t: &Spanned<Term>, z: &str, c: usize) -> Spanned<Term> {
+            match &t.v {
+                Term::Var(x) => Spanned {
+                    v: Term::Var(*x),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                },
+                Term::TmpVar(s) => {
+                    if z == *s {
+                        Spanned {
+                            v: Term::Var(c),
+                            start: t.start,
+                            line: t.line,
+                            column: t.column,
+                        }
+                    } else {
+                        t.clone()
+                    }
+                }
+                Term::Abs(ty, t1) => Spanned {
+                    v: Term::Abs(ty.clone(), Box::new(walk_spanned(t1, z, c + 1))),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                },
+                Term::MAbs(ty, t1) => Spanned {
+                    v: Term::MAbs(ty.clone(), Box::new(walk_spanned(t1, z, c + 1))),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                },
+                Term::App(t1, t2) => Spanned {
+                    v: Term::App(
+                        Box::new(walk_spanned(t1, z, c)),
+                        Box::new(walk_spanned(t2, z, c)),
+                    ),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                },
+            }
+        }
+        walk_spanned(spanned_term, zero_name, 0)
+    }
+}
