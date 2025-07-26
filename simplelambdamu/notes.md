@@ -28,9 +28,10 @@ $T \to \bot$ を $\neg T$ と表す。
 <var> ::= number | string
 
 <ty> ::= <tyarr>
+<tyneg> ::= "!" <tyneg> | <tyarr>
 <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 <tyarrsub> ::= "->" <ty>
-<tyatom> ::= <tyencl> | <tybot> | <tyneg> | <tyvar>
+<tyatom> ::= <tyencl> | <tybot> | <tyvar>
 <tyencl> ::= "(" <ty> ")"
 <tybot> ::= "Bot"
 <tyneg> ::= "!" <ty>

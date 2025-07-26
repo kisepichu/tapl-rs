@@ -33,33 +33,6 @@ fn parse_tybot(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     ))
 }
 
-/// <tyneg> ::= "!" <ty>
-fn parse_tyneg(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
-    let (i, neg) = preceded(char('!'), multispace0).parse(i)?;
-    let (i, t) = update_err("type expected", 20, parse_ty_space).parse(i)?;
-
-    Ok((
-        i,
-        Prg {
-            st: Spanned {
-                v: Type::Arr(
-                    Box::new(t.st.clone()),
-                    Box::new(Spanned {
-                        v: Type::Bot,
-                        start: neg.location_offset(),
-                        line: neg.location_line(),
-                        column: neg.get_utf8_column(),
-                    }),
-                ),
-                start: t.st.start,
-                line: t.st.line,
-                column: t.st.column,
-            },
-            lasterr: t.lasterr,
-        },
-    ))
-}
-
 /// <tyencl> ::= "(" <ty> ")"
 fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = char('(').parse(i)?;
@@ -94,14 +67,13 @@ fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
     ))
 }
 
-/// <tyatom> ::= <tyencl> | <tybot> | <tyneg> | <tyvar>
+/// <tyatom> ::= <tyencl> | <tybot> | <tyvar>
 fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     preceded(
         multispace0,
         alt((
             parse_tyencl,
             parse_tybot,
-            parse_tyneg,
             map(parse_ident_span, |ident| Prg {
                 st: Spanned {
                     v: Type::TyVar(ident.st.v),
@@ -116,6 +88,38 @@ fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     .parse(i)
 }
 
+/// <tyneg> ::= "!" <tyneg> | <tyatom>
+fn parse_tyneg(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
+    let (i, neg) = opt(with_pos(char('!'))).parse(i)?;
+    let (i, _) = multispace0.parse(i)?;
+    let (i, ty) = update_err("type expected", 20, parse_tyatom).parse(i)?;
+
+    if let Some(neg) = neg {
+        Ok((
+            i,
+            Prg {
+                st: Spanned {
+                    v: Type::Arr(
+                        Box::new(ty.st.clone()),
+                        Box::new(Spanned {
+                            v: Type::Bot,
+                            start: neg.st.start,
+                            line: neg.st.line,
+                            column: neg.st.column,
+                        }),
+                    ),
+                    start: ty.st.start,
+                    line: ty.st.line,
+                    column: ty.st.column,
+                },
+                lasterr: ty.lasterr,
+            },
+        ))
+    } else {
+        Ok((i, ty))
+    }
+}
+
 /// <tyarrsub> ::= "->" <ty>
 fn parse_tyarrsub(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
     let (i, _) = preceded(multispace0, tag("->")).parse(i)?;
@@ -124,13 +128,13 @@ fn parse_tyarrsub(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
 
 /// <tyarr> ::= <tyarr> <tyarrsub> | <tyatom>
 fn parse_tyarr(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
-    let (i, tyatom) = preceded(multispace0, parse_tyatom).parse(i)?;
+    let (i, tyneg) = preceded(multispace0, parse_tyneg).parse(i)?;
     let (i, rest) = many0(parse_tyarrsub).parse(i)?;
 
-    let start_pos = (tyatom.st.start, tyatom.st.line, tyatom.st.column);
-    let lasterr = tyatom.lasterr.clone();
+    let start_pos = (tyneg.st.start, tyneg.st.line, tyneg.st.column);
+    let lasterr = tyneg.lasterr.clone();
 
-    let res = once(tyatom.st)
+    let res = once(tyneg.st)
         .chain(rest.into_iter().map(|t| t.st))
         .rev()
         .fold(None, |acc, ty| match acc {
@@ -497,20 +501,44 @@ mod test {
     }
 
     #[allow(unused)]
+    fn spanned_type(ty: Type) -> Spanned<Type> {
+        Spanned {
+            v: ty,
+            start: 0,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    #[allow(unused)]
     // Helper function to extract just the term structure, ignoring position info
     fn extract_term_structure(term: &Term) -> Term {
         match term {
             Term::Var(x) => Term::Var(*x),
             Term::TmpVar(s) => Term::TmpVar(s.clone()),
-            Term::Abs(ty, t) => {
-                Term::Abs(ty.clone(), Box::new(spanned(extract_term_structure(&t.v))))
-            }
-            Term::MAbs(ty, t) => {
-                Term::MAbs(ty.clone(), Box::new(spanned(extract_term_structure(&t.v))))
-            }
+            Term::Abs(ty, t) => Term::Abs(
+                extract_type_structure(ty),
+                Box::new(spanned(extract_term_structure(&t.v))),
+            ),
+            Term::MAbs(ty, t) => Term::MAbs(
+                extract_type_structure(ty),
+                Box::new(spanned(extract_term_structure(&t.v))),
+            ),
             Term::App(t1, t2) => Term::App(
                 Box::new(spanned(extract_term_structure(&t1.v))),
                 Box::new(spanned(extract_term_structure(&t2.v))),
+            ),
+        }
+    }
+
+    #[allow(unused)]
+    fn extract_type_structure(ty: &Type) -> Type {
+        match ty {
+            Type::TyVar(s) => Type::TyVar(s.clone()),
+            Type::Bot => Type::Bot,
+            Type::Arr(t1, t2) => Type::Arr(
+                Box::new(spanned_type(extract_type_structure(&t1.v))),
+                Box::new(spanned_type(extract_type_structure(&t2.v))),
             ),
         }
     }
@@ -540,6 +568,19 @@ mod test {
     #[case(
         r"\x:P.\y:Q.x y",
         Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(1))), Box::new(spanned(Term::Var(0)))))))))))
+    )]
+    #[case(
+        r"\f:!A->A.f",
+        Some(Term::Abs(
+            Type::Arr(
+                Box::new(spanned_type(Type::Arr(
+                    Box::new(spanned_type(Type::TyVar("A".to_string()))),
+                    Box::new(spanned_type(Type::Bot))
+                ))),
+                Box::new(spanned_type(Type::TyVar("A".to_string())))
+            ),
+            Box::new(spanned(Term::Var(0)))
+        ))
     )]
     #[case(r"\", None)]
     #[case(r"(", None)]

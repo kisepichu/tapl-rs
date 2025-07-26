@@ -240,6 +240,18 @@ fn extract_type_structure(ty: &Type) -> Type {
 )]
 #[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
 #[case(r"(\f:(Bool->Bool)->Bool.0) \x:Bool.x", None)]
+#[case(r"\g:(A->Bot)->Bot./alpha:!A.g alpha",
+    Some(Type::Arr(
+        Box::new(spanned_type(Type::Arr(
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("A".to_string()))),
+                Box::new(spanned_type(Type::Bot))
+            ))),
+            Box::new(spanned_type(Type::Bot))
+        ))),
+        Box::new(spanned_type(Type::TyVar("A".to_string())))
+    ))
+)]
 fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
     use crate::parser;
     println!("input: {}", input);
