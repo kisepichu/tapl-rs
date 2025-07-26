@@ -277,7 +277,7 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 }
                 {
                     let t22_star = star(t22, t1);
-                    let tyv1 = type_of_spanned(&Context::default(), t1);
+                    let tyv1 = type_of_spanned(ctx, t1);
                     if let Ok(Type::Arr(_tya, tyb)) = tyv1 {
                         Ok(Term::MAbs(
                             Type::Arr(
@@ -330,7 +330,7 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 Ok(term_shift(&t21.v, -1)?)
             }
             // (E-LAM)
-            _ if !t2.v.isval() => {
+            _ => {
                 println!("E-LAM: {}", t);
                 let ctx = ctx.clone().push(ty.clone());
                 Ok(Term::Abs(
@@ -343,7 +343,6 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                     }),
                 ))
             }
-            _ => Err("eval1: no rule applies".to_string()),
         },
         Term::MAbs(ty, t2) => match &t2.v {
             // E-MUETA
@@ -351,8 +350,8 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 println!("E-MUETA: {}", t);
                 Ok(term_shift(&t22.v, -1)?)
             }
-            // E-MU
-            _ if !t2.v.isval() => {
+            // (E-MU)
+            _ => {
                 println!("E-MU: {}", t);
                 let ctx = ctx.clone().push(ty.clone());
                 Ok(Term::MAbs(
@@ -365,7 +364,6 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                     }),
                 ))
             }
-            _ => Err("eval1: no rule applies".to_string()),
         },
         _ => Err("eval1: no rule applies".to_string()),
     }
