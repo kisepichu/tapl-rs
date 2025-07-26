@@ -90,34 +90,31 @@ fn parse_tyatom(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
 
 /// <tyneg> ::= "!" <tyneg> | <tyatom>
 fn parse_tyneg(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
-    let (i, neg) = opt(with_pos(char('!'))).parse(i)?;
+    let (i, neg) = many0(with_pos(char('!'))).parse(i)?;
     let (i, _) = multispace0.parse(i)?;
     let (i, ty) = update_err("type expected", 20, parse_tyatom).parse(i)?;
 
-    if let Some(neg) = neg {
-        Ok((
-            i,
-            Prg {
-                st: Spanned {
-                    v: Type::Arr(
-                        Box::new(ty.st.clone()),
-                        Box::new(Spanned {
-                            v: Type::Bot,
-                            start: neg.st.start,
-                            line: neg.st.line,
-                            column: neg.st.column,
-                        }),
-                    ),
-                    start: ty.st.start,
-                    line: ty.st.line,
-                    column: ty.st.column,
-                },
-                lasterr: ty.lasterr,
+    let mut result = ty;
+    for neg in neg {
+        result = Prg {
+            st: Spanned {
+                v: Type::Arr(
+                    Box::new(result.st.clone()),
+                    Box::new(Spanned {
+                        v: Type::Bot,
+                        start: neg.st.start,
+                        line: neg.st.line,
+                        column: neg.st.column,
+                    }),
+                ),
+                start: result.st.start,
+                line: result.st.line,
+                column: result.st.column,
             },
-        ))
-    } else {
-        Ok((i, ty))
+            lasterr: result.lasterr,
+        };
     }
+    Ok((i, result))
 }
 
 /// <tyarrsub> ::= "->" <ty>
@@ -570,11 +567,14 @@ mod test {
         Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(1))), Box::new(spanned(Term::Var(0)))))))))))
     )]
     #[case(
-        r"\f:!A->A.f",
+        r"\f:!!A->A.f",
         Some(Term::Abs(
             Type::Arr(
                 Box::new(spanned_type(Type::Arr(
-                    Box::new(spanned_type(Type::TyVar("A".to_string()))),
+                    Box::new(spanned_type(Type::Arr(
+                        Box::new(spanned_type(Type::TyVar("A".to_string()))),
+                        Box::new(spanned_type(Type::Bot))
+                    ))),
                     Box::new(spanned_type(Type::Bot))
                 ))),
                 Box::new(spanned_type(Type::TyVar("A".to_string())))
