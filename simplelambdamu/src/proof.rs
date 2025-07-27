@@ -222,7 +222,7 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
 
 // use typst::...
 
-fn render_typst_to_svg(input: &str) -> String {
+pub fn render_typst_to_svg(input: &str) -> String {
     use std::path::PathBuf;
     use typst::compile;
     use typst_library::layout::PagedDocument;

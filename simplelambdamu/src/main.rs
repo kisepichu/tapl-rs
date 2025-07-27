@@ -9,7 +9,7 @@ use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 use typing::type_of;
 
-use crate::proof::typst_proof;
+use crate::proof::{render_typst_to_svg, typst_proof};
 use crate::syntax::context::Context;
 
 fn main() -> Result<()> {
@@ -35,7 +35,7 @@ fn main() -> Result<()> {
                 }
                 if line == "svg" {
                     // print svg string
-                    
+                    println!("{}", render_typst_to_svg(&proof));
                 }
                 if line.starts_with("strategy") {
                     let strategies = [
