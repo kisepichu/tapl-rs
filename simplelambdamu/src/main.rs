@@ -34,8 +34,8 @@ fn main() -> Result<()> {
                     continue;
                 }
                 if line == "svg" {
-                    // save to a file
-                    todo!()
+                    // print svg string
+                    
                 }
                 if line.starts_with("strategy") {
                     let strategies = [
