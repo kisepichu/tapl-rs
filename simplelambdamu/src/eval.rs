@@ -236,7 +236,9 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
             }?,
             // E-STRV
             (v1, Term::MAbs(Type::Arr(_tya, tybot), t22))
-                if (*strategy == Strategy::Cbv || *strategy == Strategy::CbvWithEta)
+                if (*strategy == Strategy::NormalOrder
+                    || *strategy == Strategy::Cbv
+                    || *strategy == Strategy::CbvWithEta)
                     && v1.isval()
                     && tybot.v == Type::Bot =>
             {
