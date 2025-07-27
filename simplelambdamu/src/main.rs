@@ -1,17 +1,21 @@
 mod eval;
 mod parser;
+mod proof;
 mod span;
 mod syntax;
 mod typing;
 
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
-use syntax::context::Context;
-use typing::type_of_spanned;
+use typing::type_of;
+
+use crate::proof::typst_proof;
+use crate::syntax::context::Context;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
-    let mut st = eval::Strategy::Cbv;
+    let mut current_strategy = eval::Strategy::Cbv;
+    let mut proof = String::new();
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -41,7 +45,7 @@ fn main() -> Result<()> {
                     if let Some(input) = input {
                         if let Some((name, strategy)) = strategies.iter().find(|(n, _)| n == &input)
                         {
-                            st = strategy.clone();
+                            current_strategy = strategy.clone();
                             println!("Strategy set to: {}", name);
                         } else {
                             println!("Unknown strategy: {}", input);
@@ -69,7 +73,7 @@ fn main() -> Result<()> {
                 // println!("{:?}", t);
 
                 let ctx = Context::default();
-                let ty = match type_of_spanned(&ctx, &t) {
+                let ty = match type_of(&ctx, &t) {
                     Ok(ty) => ty,
                     Err(e) => {
                         println!("input= {}", t.v);
@@ -83,8 +87,22 @@ fn main() -> Result<()> {
                 };
                 // println!("{:?}", ty);
 
+                proof = match typst_proof(&ctx, &t) {
+                    Ok(pf) => pf,
+                    Err(e) => {
+                        println!("input= {}", t.v);
+                        println!(
+                            "{}\n{}",
+                            parser::display_position(line.as_str(), e.line, e.column),
+                            e
+                        );
+                        continue;
+                    }
+                };
+                println!("proof:\n\n{}", proof);
+
                 println!("input= {}: {}", t.v, ty);
-                let t = match eval::eval(&t.v, &st) {
+                let t = match eval::eval(&t.v, &current_strategy) {
                     Ok(t) => t,
                     Err(e) => {
                         println!("eval error: {}", e);

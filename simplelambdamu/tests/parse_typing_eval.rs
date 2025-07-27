@@ -50,7 +50,7 @@ fn test_parse_typing_eval(
     use simplelambdamu::eval::eval;
     use simplelambdamu::parser::parse_spanned;
     use simplelambdamu::syntax::context::Context;
-    use simplelambdamu::typing::type_of_spanned;
+    use simplelambdamu::typing::type_of;
 
     println!("input= {}", input);
 
@@ -62,7 +62,7 @@ fn test_parse_typing_eval(
         println!("parsed= {}", parsed_str);
         assert_eq!(Some(parsed_str.as_str()), expected_parsed);
 
-        let ty = type_of_spanned(&ctx, &t).map(|t| t.to_string()).ok();
+        let ty = type_of(&ctx, &t).map(|t| t.to_string()).ok();
         println!("ty= {:?}", ty);
 
         if ty.is_some() {

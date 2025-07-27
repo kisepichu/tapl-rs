@@ -3,7 +3,7 @@ use num::FromPrimitive;
 use crate::{
     span::Spanned,
     syntax::{context::Context, term::Term, r#type::Type},
-    typing::type_of_spanned,
+    typing::type_of,
 };
 
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
@@ -121,7 +121,7 @@ fn zero_in_fv(t: &Term) -> bool {
 }
 
 fn is_neg_type(t: &Term, ctx: &Context) -> bool {
-    let ty = type_of_spanned(
+    let ty = type_of(
         ctx,
         &Spanned {
             v: t.clone(),
@@ -295,7 +295,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                 }
                 {
                     let t22_star = star(t22, t1);
-                    let tyv1 = type_of_spanned(ctx, t1);
+                    let tyv1 = type_of(ctx, t1);
                     if let Ok(Type::Arr(_tya, tyb)) = tyv1 {
                         Ok(Term::MAbs(
                             Type::Arr(

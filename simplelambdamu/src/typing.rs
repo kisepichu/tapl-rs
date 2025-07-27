@@ -14,7 +14,7 @@ fn types_equal_ignore_pos(ty1: &Type, ty2: &Type) -> bool {
     }
 }
 
-pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
+pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
     match &t.v {
         Term::Var(x) => match ctx.get(*x) {
             Some(ty) => Ok(ty.clone()),
@@ -35,7 +35,7 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
         }),
         Term::Abs(ty, t2) => {
             let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of_spanned(&ctx, t2)?;
+            let ty2 = type_of(&ctx, t2)?;
             Ok(Type::Arr(
                 Box::new(Spanned {
                     v: ty.clone(),
@@ -53,7 +53,7 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
         }
         Term::MAbs(ty, t2) => {
             let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of_spanned(&ctx, t2)?;
+            let ty2 = type_of(&ctx, t2)?;
             if ty2 != Type::Bot {
                 return Err(ErrorWithPos {
                     message: format!(
@@ -94,8 +94,8 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
             }
         }
         Term::App(t1, t2) => {
-            let ty1 = type_of_spanned(ctx, t1)?;
-            let ty2 = type_of_spanned(ctx, t2)?;
+            let ty1 = type_of(ctx, t1)?;
+            let ty2 = type_of(ctx, t2)?;
             match ty1 {
                 Type::Arr(ty11, ty12) => {
                     if types_equal_ignore_pos(&ty11.v, &ty2) {
@@ -119,16 +119,25 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
                         })
                     }
                 }
-                _ => Err(ErrorWithPos {
-                    message: format!(
-                        "type check failed: {}\n  expected arrow type, but found {}: {}",
-                        t.v, t1.v, ty1
-                    ),
-                    level: 100,
-                    kind: None,
-                    line: t1.line,
-                    column: t1.column,
-                }),
+                _ => {
+                    let mut ctx_ = ctx.clone();
+                    while let Some(next) = ctx_.parent.clone() {
+                        if let Some(b) = ctx_.binding {
+                            println!("{}", b);
+                        }
+                        ctx_ = *next;
+                    }
+                    Err(ErrorWithPos {
+                        message: format!(
+                            "type check failed: {}\n  expected arrow type, but found {}: {}",
+                            t.v, t1.v, ty1
+                        ),
+                        level: 100,
+                        kind: None,
+                        line: t1.line,
+                        column: t1.column,
+                    })
+                }
             }
         }
     }
@@ -255,12 +264,12 @@ mod tests {
         ))
     )]
     fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
-        use crate::{parser, syntax::context::Context, typing::type_of_spanned};
+        use crate::{parser, syntax::context::Context, typing::type_of};
         println!("input: {}", input);
 
         let ctx = Context::default();
         let t = parser::parse(input).unwrap();
-        let ty = type_of_spanned(
+        let ty = type_of(
             &ctx,
             &Spanned {
                 v: t,
