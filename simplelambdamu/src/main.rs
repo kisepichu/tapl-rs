@@ -33,6 +33,10 @@ fn main() -> Result<()> {
                     println!("Ctrl+C to exit");
                     continue;
                 }
+                if line == "svg" {
+                    // save to a file
+                    todo!()
+                }
                 if line.starts_with("strategy") {
                     let strategies = [
                         ("normalorder", eval::Strategy::NormalOrder),

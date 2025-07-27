@@ -219,3 +219,9 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
     result += ")\n";
     Ok(result)
 }
+
+// use typst::...
+
+fn render_typst_to_svg(input: &str) -> String {
+    todo!()
+}
