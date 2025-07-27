@@ -1,4 +1,4 @@
-use typst::diag::EcoString;
+use typst::{diag::EcoString, foundations::Bytes};
 use typst_syntax::package::PackageVersion;
 
 use crate::{
@@ -254,34 +254,59 @@ pub fn render_typst_to_svg(input: &str) -> String {
         }
 
         fn main(&self) -> FileId {
+            // パッケージなしのファイルIDを作成して、パッケージマニフェストの問題を回避
             FileId::new(
                 Some(typst_syntax::package::PackageSpec {
                     namespace: EcoString::new(),
                     name: EcoString::new(),
                     version: PackageVersion {
                         major: 0,
-                        minor: 0,
+                        minor: 1,
                         patch: 0,
                     },
                 }),
-                VirtualPath::new("main.typ"),
+                VirtualPath::new("input.typ"),
             )
         }
 
-        fn source(&self, _id: FileId) -> typst_library::diag::FileResult<Source> {
-            Ok(self.source.clone())
+        fn source(&self, id: FileId) -> typst_library::diag::FileResult<Source> {
+            // メインファイルの場合のみソースを返す
+            if id == self.main() {
+                Ok(self.source.clone())
+            } else {
+                Ok(Source::new(
+                    id,
+                    r#"[package]
+name = ""
+version = "0.1.0"
+entrypoint = "input.typ"
+"#
+                    .to_string(),
+                ))
+            }
         }
 
         fn file(
             &self,
-            _id: FileId,
+            id: FileId,
         ) -> typst_library::diag::FileResult<typst_library::foundations::Bytes> {
-            // 文字列からの変換なので、ファイルは必要ない
-            // 空のバイトデータを返す
-            Ok(typst_library::foundations::Bytes::new("".as_bytes()))
+            if id == self.main() {
+                Ok(typst_library::foundations::Bytes::new("".as_bytes()))
+            } else {
+                Ok(Bytes::new(
+                    r#"[package]
+name = ""
+version = "0.1.0"
+entrypoint = "input.typ"
+"#
+                    .as_bytes(),
+                ))
+            }
         }
 
         fn font(&self, _index: usize) -> Option<typst_library::text::Font> {
+            // デフォルトフォントを返す
+            // 実際のフォントデータは必要ないので、Noneを返す
             None
         }
 
