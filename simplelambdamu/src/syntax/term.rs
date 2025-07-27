@@ -56,12 +56,6 @@ impl fmt::Display for Term {
 impl Term {
     pub fn isval(&self) -> bool {
         matches!(self, Term::Abs(_, _)) || matches!(self, Term::Var(_))
-
-        // match self {
-        //     Term::Var(_) => true,
-        //     Term::Abs(_, v) if v.v.isval() => true,
-        //     _ => false,
-        // }
     }
 
     /// 位置情報を保持しながら変数名を数値に変換する

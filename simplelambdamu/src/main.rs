@@ -11,6 +11,7 @@ use typing::type_of_spanned;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
+    let mut st = eval::Strategy::Cbv;
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -19,15 +20,42 @@ fn main() -> Result<()> {
                     break;
                 }
                 if line == "help" || line == "?" {
-                    println!("Type check and evaluate a term in simply typed lambda calculus.");
+                    println!("Type check and evaluate a term in lambda mu calculus.");
                     println!(
-                        "example: (\\:Bool.if 0 then \\:Bool.\\:Bool.1 else \\:Bool.\\:Bool.0) true"
+                        "example: \\s:N->N. \\z:N. /alpha:!N. alpha (s (s /beta:!N. alpha z))"
                     );
-                    println!(
-                        "                                                   : Bool->Bool->Bool"
-                    );
-                    println!("     ->* \\:Bool.\\:Bool.1");
+                    println!("                                                   : (N->N)->N->N");
+                    println!("     ->* \\:N->N.\\:N.0");
                     println!("Ctrl+C to exit");
+                    continue;
+                }
+                if line.starts_with("strategy") {
+                    let strategies = [
+                        ("normalorder", eval::Strategy::NormalOrder),
+                        ("cbv", eval::Strategy::Cbv),
+                        ("cbn", eval::Strategy::Cbn),
+                        ("cbvwitheta", eval::Strategy::CbvWithEta),
+                        ("cbnwitheta", eval::Strategy::CbnWithEta),
+                    ];
+                    let input = line.split_whitespace().nth(1);
+                    if let Some(input) = input {
+                        if let Some((name, strategy)) = strategies.iter().find(|(n, _)| n == &input)
+                        {
+                            st = strategy.clone();
+                            println!("Strategy set to: {}", name);
+                        } else {
+                            println!("Unknown strategy: {}", input);
+                            println!("Available strategies:");
+                            for (name, _) in &strategies {
+                                println!("  {}", name);
+                            }
+                        }
+                    } else {
+                        println!("Available strategies:");
+                        for (name, _) in &strategies {
+                            println!("  {}", name);
+                        }
+                    }
                     continue;
                 }
 
@@ -56,7 +84,7 @@ fn main() -> Result<()> {
                 // println!("{:?}", ty);
 
                 println!("input= {}: {}", t.v, ty);
-                let t = match eval::eval(&t.v) {
+                let t = match eval::eval(&t.v, &st) {
                     Ok(t) => t,
                     Err(e) => {
                         println!("eval error: {}", e);

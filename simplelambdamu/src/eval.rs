@@ -137,13 +137,25 @@ fn is_neg_type(t: &Term, ctx: &Context) -> bool {
     }
 }
 
-fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Strategy {
+    NormalOrder,
+    Cbv,
+    Cbn,
+    CbvWithEta,
+    CbnWithEta,
+}
+
+fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
     match t {
         Term::App(t1, t2) => Ok(match (&t1.v, &t2.v) {
             // E-BETA
-            (Term::Abs(_ty, t12), v2) if v2.isval() => {
+            (Term::Abs(_ty, t12), t2)
+                if t2.isval()
+                    || (*strategy != Strategy::Cbv && *strategy != Strategy::CbvWithEta) =>
+            {
                 println!("E-BETA: {}", t);
-                term_subst_top(v2, &t12.v)?
+                term_subst_top(t2, &t12.v)?
             }
             // E-MUBETA
             (n1, Term::MAbs(_ty, t22)) if is_neg_type(n1, ctx) => {
@@ -223,7 +235,11 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 }
             }?,
             // E-STRV
-            (v1, Term::MAbs(Type::Arr(_tya, tybot), t22)) if v1.isval() && tybot.v == Type::Bot => {
+            (v1, Term::MAbs(Type::Arr(_tya, tybot), t22))
+                if (*strategy == Strategy::Cbv || *strategy == Strategy::CbvWithEta)
+                    && v1.isval()
+                    && tybot.v == Type::Bot =>
+            {
                 println!("E-STRV: {}", t);
                 fn star(t: &Spanned<Term>, v1: &Spanned<Term>) -> Spanned<Term> {
                     fn walk(t: &Spanned<Term>, v1: &Spanned<Term>, c: usize) -> Spanned<Term> {
@@ -302,7 +318,7 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 Term::App(
                     t1.clone(),
                     Box::new(Spanned {
-                        v: eval1(&t2.v, ctx)?,
+                        v: eval1(&t2.v, ctx, strategy)?,
                         start: t2.start,
                         line: t2.line,
                         column: t2.column,
@@ -314,7 +330,7 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 println!("E-APP1: {}", t);
                 Term::App(
                     Box::new(Spanned {
-                        v: eval1(&t1.v, ctx)?,
+                        v: eval1(&t1.v, ctx, strategy)?,
                         start: t1.start,
                         line: t1.line,
                         column: t1.column,
@@ -325,24 +341,31 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
         }),
         Term::Abs(ty, t2) => match &t2.v {
             // E-ETA
-            Term::App(t21, tvar0) if !zero_in_fv(&t21.v) && tvar0.v == Term::Var(0) => {
+            Term::App(t21, tvar0)
+                if (*strategy == Strategy::NormalOrder
+                    || *strategy == Strategy::CbvWithEta
+                    || *strategy == Strategy::CbnWithEta)
+                    && !zero_in_fv(&t21.v)
+                    && tvar0.v == Term::Var(0) =>
+            {
                 println!("E-ETA: {}", t);
                 Ok(term_shift(&t21.v, -1)?)
             }
             // (E-LAM)
-            _ => {
+            _ if *strategy == Strategy::NormalOrder => {
                 println!("E-LAM: {}", t);
                 let ctx = ctx.clone().push(ty.clone());
                 Ok(Term::Abs(
                     ty.clone(),
                     Box::new(Spanned {
-                        v: eval1(&t2.v, &ctx)?,
+                        v: eval1(&t2.v, &ctx, strategy)?,
                         start: t2.start,
                         line: t2.line,
                         column: t2.column,
                     }),
                 ))
             }
+            _ => Err("eval1: no rule applies".to_string()),
         },
         Term::MAbs(ty, t2) => match &t2.v {
             // E-MUETA
@@ -351,28 +374,29 @@ fn eval1(t: &Term, ctx: &Context) -> Result<Term, String> {
                 Ok(term_shift(&t22.v, -1)?)
             }
             // (E-MU)
-            _ => {
+            _ if *strategy == Strategy::NormalOrder => {
                 println!("E-MU: {}", t);
                 let ctx = ctx.clone().push(ty.clone());
                 Ok(Term::MAbs(
                     ty.clone(),
                     Box::new(Spanned {
-                        v: eval1(&t2.v, &ctx)?,
+                        v: eval1(&t2.v, &ctx, strategy)?,
                         start: t2.start,
                         line: t2.line,
                         column: t2.column,
                     }),
                 ))
             }
+            _ => Err("eval1: no rule applies".to_string()),
         },
         _ => Err("eval1: no rule applies".to_string()),
     }
 }
 
-pub fn eval(t: &Term) -> Result<Term, String> {
+pub fn eval(t: &Term, strategy: &Strategy) -> Result<Term, String> {
     let mut t = t.clone();
     loop {
-        t = match eval1(&t, &Context::default()) {
+        t = match eval1(&t, &Context::default(), strategy) {
             Ok(t1) => t1,
             Err(e) => {
                 if e == "eval1: no rule applies" {
@@ -404,6 +428,8 @@ mod tests {
 
     #[test]
     fn test_eval1() {
+        let st = Strategy::Cbv;
+
         // id = \x:Bool.x
         let id = Term::Abs(
             Type::TyVar("Bool".to_string()),
@@ -412,7 +438,7 @@ mod tests {
         {
             // (\x.x) (\x.x) == \x.x
             let t = Term::App(Box::new(spanned(id.clone())), Box::new(spanned(id.clone())));
-            assert_eq!(eval(&t).unwrap(), id);
+            assert_eq!(eval(&t, &st).unwrap(), id);
         }
 
         // tru = \t:Bool.\f:Bool.t
@@ -438,7 +464,7 @@ mod tests {
                 Box::new(spanned(fls.clone())),
                 Box::new(spanned(id.clone())),
             );
-            assert_eq!(eval(&t).unwrap(), id);
+            assert_eq!(eval(&t, &st).unwrap(), id);
         }
 
         // and = \b: Bool.\c:Bool.b c fls
@@ -467,7 +493,7 @@ mod tests {
                 ))),
                 Box::new(spanned(fls.clone())),
             );
-            assert_eq!(eval(&t).unwrap(), fls);
+            assert_eq!(eval(&t, &st).unwrap(), fls);
         }
 
         {
@@ -479,7 +505,7 @@ mod tests {
                 ))),
                 Box::new(spanned(fls.clone())),
             );
-            assert_eq!(eval(&t).unwrap(), fls);
+            assert_eq!(eval(&t, &st).unwrap(), fls);
         }
 
         {
@@ -491,7 +517,7 @@ mod tests {
                 ))),
                 Box::new(spanned(tru.clone())),
             );
-            assert_eq!(eval(&t).unwrap(), tru);
+            assert_eq!(eval(&t, &st).unwrap(), tru);
         }
     }
 }
