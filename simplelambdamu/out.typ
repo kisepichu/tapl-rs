@@ -1,41 +1,5 @@
 #import "@preview/curryst:0.5.1": rule, prooftree
 
-#let impl-i = rule.with(name: $scripts(->)_"I"$)
-#let impl-e = rule.with(name: $scripts(->)_"E"$)
-#let bot-c = rule.with(name: $scripts(⊥)_"C"$)
-
-#prooftree(
-  rule(
-    name: $R$,
-    $C_1 or C_2 -> C_3$,
-    rule(
-      name: $A$,
-      $C_1 or C_2 or L$,
-      rule(
-        $C_1 or L$,
-        $Pi_1$,
-      ),
-    ),
-    impl-i(
-      $C_2 or overline(L) -> A$,
-      $bot$,
-    ),
-    bot-c(
-      $C_3$,
-      $Pi_1$,
-    ),
-  )
-)
-
-#prooftree(
-  rule(
-    name: $scripts(->)_"I", "todo"$,
-    $A$,
-    $[A]^0$
-  )
-)
-
-
 --- before
 
 #prooftree(
@@ -43,27 +7,27 @@
     name: $scripts(->)_"E"$,
     $N->N$,
     rule(
-      name: $scripts(->)_"I", 0$,
+      name: $scripts(->)_"I", 1$,
       $(((N->N)->bot)->N->N)->N->N$,
       rule(
-        name: $bot_"C", 0$,
+        name: $bot_"C", 2$,
         $N->N$,
         rule(
           name: $scripts(->)_"E"$,
           $bot$,
-          $[(N->N)->bot]^0$,
+          $[(N->N)->bot]^2$,
           rule(
             name: $scripts(->)_"E"$,
             $N->N$,
             $[((N->N)->bot)->N->N]^1$,
             rule(
-              name: $scripts(->)_"I", 0$,
+              name: $scripts(->)_"I", 3$,
               $(N->N)->bot$,
               rule(
                 name: $scripts(->)_"E"$,
                 $bot$,
-                $[(N->N)->bot]^1$,
-                $[N->N]^0$,
+                $[(N->N)->bot]^2$,
+                $[N->N]^3$,
               ),
             ),
           ),
@@ -71,19 +35,19 @@
       ),
     ),
     rule(
-      name: $scripts(->)_"I", 0$,
+      name: $scripts(->)_"I", 4$,
       $((N->N)->bot)->N->N$,
       rule(
-        name: $bot_"C", 0$,
+        name: $bot_"C", 5$,
         $N->N$,
         rule(
           name: $scripts(->)_"E"$,
           $bot$,
-          $[(N->N)->bot]^0$,
+          $[(N->N)->bot]^5$,
           rule(
-            name: $scripts(->)_"I", 0$,
+            name: $scripts(->)_"I", 6$,
             $N->N$,
-            $[N]^0$,
+            $[N]^6$,
           ),
         ),
       ),
@@ -92,44 +56,43 @@
 )
 
 --- cbv
-
 #prooftree(
   rule(
-    name: $bot_"C", 0$,
+    name: $bot_"C", 1$,
     $N->N$,
     rule(
       name: $scripts(->)_"E"$,
       $bot$,
-      $[(N->N)->bot]^0$,
+      $[(N->N)->bot]^1$,
       rule(
         name: $scripts(->)_"E"$,
         $N->N$,
         rule(
-          name: $scripts(->)_"I", 0$,
+          name: $scripts(->)_"I", 2$,
           $((N->N)->bot)->N->N$,
           rule(
-            name: $bot_"C", 0$,
+            name: $bot_"C", 3$,
             $N->N$,
             rule(
               name: $scripts(->)_"E"$,
               $bot$,
-              $[(N->N)->bot]^0$,
+              $[(N->N)->bot]^3$,
               rule(
-                name: $scripts(->)_"I", 0$,
+                name: $scripts(->)_"I", 4$,
                 $N->N$,
-                $[N]^0$,
+                $[N]^4$,
               ),
             ),
           ),
         ),
         rule(
-          name: $scripts(->)_"I", 0$,
+          name: $scripts(->)_"I", 5$,
           $(N->N)->bot$,
           rule(
             name: $scripts(->)_"E"$,
             $bot$,
             $[(N->N)->bot]^1$,
-            $[N->N]^0$,
+            $[N->N]^5$,
           ),
         ),
       ),
@@ -137,13 +100,13 @@
   )
 )
 
---- normalorder
+--- normal order
 
 #prooftree(
   rule(
-    name: $scripts(->)_"I", 0$,
+    name: $scripts(->)_"I", 1$,
     $N->N$,
-    $[N]^0$,
+    $[N]^1$,
   )
 )
 
@@ -153,36 +116,35 @@
 
 --- before
 
-
 #prooftree(
   rule(
-    name: $scripts(->)_"I", 0$,
+    name: $scripts(->)_"I", 1$,
     $(N->N)->N->N$,
     rule(
-      name: $scripts(->)_"I", 0$,
+      name: $scripts(->)_"I", 2$,
       $N->N$,
       rule(
-        name: $bot_"C", 0$,
+        name: $bot_"C", 3$,
         $N$,
         rule(
           name: $scripts(->)_"E"$,
           $bot$,
-          $[N->bot]^0$,
+          $[N->bot]^3$,
           rule(
             name: $scripts(->)_"E"$,
             $N$,
-            $[N->N]^2$,
+            $[N->N]^1$,
             rule(
               name: $scripts(->)_"E"$,
               $N$,
-              $[N->N]^2$,
+              $[N->N]^1$,
               rule(
-                name: $bot_"C", 0$,
+                name: $bot_"C", 4$,
                 $N$,
                 rule(
                   name: $scripts(->)_"E"$,
                   $bot$,
-                  $[N->bot]^1$,
+                  $[N->bot]^3$,
                   $[N]^2$,
                 ),
               ),
@@ -194,17 +156,17 @@
   )
 )
 
----
-normalorder
+--- normal order
+
 
 #prooftree(
   rule(
-    name: $scripts(->)_"I", 0$,
+    name: $scripts(->)_"I", 1$,
     $(N->N)->N->N$,
     rule(
-      name: $scripts(->)_"I", 0$,
+      name: $scripts(->)_"I", 2$,
       $N->N$,
-      $[N]^0$,
+      $[N]^2$,
     ),
   )
 )
@@ -216,33 +178,33 @@ normalorder
 
 #prooftree(
   rule(
-    name: $scripts(->)_"I", 0$,
+    name: $scripts(->)_"I", 1$,
     $((A->bot)->bot)->A$,
     rule(
       name: $scripts(->)_"E"$,
       $A$,
       rule(
-        name: $scripts(->)_"I", 0$,
+        name: $scripts(->)_"I", 2$,
         $((A->bot)->A)->A$,
         rule(
-          name: $bot_"C", 0$,
+          name: $bot_"C", 3$,
           $A$,
           rule(
             name: $scripts(->)_"E"$,
             $bot$,
-            $[A->bot]^0$,
+            $[A->bot]^3$,
             rule(
               name: $scripts(->)_"E"$,
               $A$,
-              $[(A->bot)->A]^1$,
+              $[(A->bot)->A]^2$,
               rule(
-                name: $scripts(->)_"I", 0$,
+                name: $scripts(->)_"I", 4$,
                 $A->bot$,
                 rule(
                   name: $scripts(->)_"E"$,
                   $bot$,
-                  $[A->bot]^1$,
-                  $[A]^0$,
+                  $[A->bot]^3$,
+                  $[A]^4$,
                 ),
               ),
             ),
@@ -250,16 +212,16 @@ normalorder
         ),
       ),
       rule(
-        name: $scripts(->)_"I", 0$,
+        name: $scripts(->)_"I", 5$,
         $(A->bot)->A$,
         rule(
-          name: $bot_"C", 0$,
+          name: $bot_"C", 6$,
           $A$,
           rule(
             name: $scripts(->)_"E"$,
             $bot$,
-            $[(A->bot)->bot]^2$,
-            $[A->bot]^1$,
+            $[(A->bot)->bot]^1$,
+            $[A->bot]^5$,
           ),
         ),
       ),
@@ -267,20 +229,20 @@ normalorder
   )
 )
 
---- normalorder
+--- normal order
 
 #prooftree(
   rule(
-    name: $scripts(->)_"I", 0$,
+    name: $scripts(->)_"I", 1$,
     $((A->bot)->bot)->A$,
     rule(
-      name: $bot_"C", 0$,
+      name: $bot_"C", 2$,
       $A$,
       rule(
         name: $scripts(->)_"E"$,
         $bot$,
         $[(A->bot)->bot]^1$,
-        $[A->bot]^0$,
+        $[A->bot]^2$,
       ),
     ),
   )

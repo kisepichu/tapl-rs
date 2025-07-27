@@ -1,6 +1,10 @@
 use crate::{
     span::{ErrorWithPos, Spanned},
-    syntax::{context::Context, term::Term, r#type::Type},
+    syntax::{
+        context::Context,
+        term::{Info, Term},
+        r#type::Type,
+    },
     typing::type_of,
 };
 
@@ -46,13 +50,30 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
 "#
     .to_string();
 
-    fn walk(ctx: &Context, t: &Spanned<Term>, d: usize) -> Result<String, ErrorWithPos> {
+    fn walk(
+        ctx: &Context,
+        t: &Spanned<Term>,
+        d: usize,
+        assumption_count: usize,
+    ) -> Result<(String, usize), ErrorWithPos> {
         match &t.v {
-            Term::Var(x, info) => match ctx.get(*x) {
-                Some(ty) => Ok(indented(
-                    d,
-                    &format!("$[{}]^{}$", type_to_formula(ty), info.assumption_num),
-                )),
+            Term::Var(x, _info) => match ctx.get(*x) {
+                Some(ty) => {
+                    if let Some(a_info) = ctx.get_info(*x) {
+                        Ok((
+                            indented(
+                                d,
+                                &format!("$[{}]^{}$", type_to_formula(ty), a_info.assumption_num),
+                            ),
+                            assumption_count,
+                        ))
+                    } else {
+                        Ok((
+                            indented(d, &format!("${}$", type_to_formula(ty))),
+                            assumption_count,
+                        ))
+                    }
+                }
                 None => Err(ErrorWithPos {
                     message: format!("type check failed: {}\n: unbound variable {}", t.v, x),
                     level: 100,
@@ -70,9 +91,13 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
             }),
             // ->_I
             Term::Abs(ty, t2, info) => {
+                let info = Info {
+                    name: info.name.clone(),
+                    assumption_num: assumption_count,
+                };
                 let ctx = ctx.clone().push(ty.clone(), info.clone());
                 let ty2 = type_of(&ctx, t2)?;
-                let pf2 = walk(&ctx, t2, d + 1)?;
+                let (pf2, assumption_count) = walk(&ctx, t2, d + 1, assumption_count + 1)?;
                 println!("t2= {}", t2.v);
                 let mut result = indented(d, "rule(");
                 result += &indented(
@@ -101,10 +126,14 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                 );
                 result += &with_comma(&pf2);
                 result += &indented(d, ")");
-                Ok(result)
+                Ok((result, assumption_count))
             }
             // bot_C
             Term::MAbs(ty, t2, info) => {
+                let info = Info {
+                    name: info.name.clone(),
+                    assumption_num: assumption_count,
+                };
                 let ctx = ctx.clone().push(ty.clone(), info.clone());
                 let ty2: Type = type_of(&ctx, t2)?;
                 if ty2 != Type::Bot {
@@ -132,7 +161,7 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                             column: t.column,
                         });
                     }
-                    let pf2 = walk(&ctx, t2, d + 1)?;
+                    let (pf2, assumption_count) = walk(&ctx, t2, d + 1, assumption_count + 1)?;
                     let mut result = indented(d, "rule(");
                     result += &indented(
                         d + 1,
@@ -141,7 +170,7 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                     result += &indented(d + 1, &format!("${}$,", type_to_formula(&ty1.v)));
                     result += &with_comma(&pf2);
                     result += &indented(d, ")");
-                    Ok(result)
+                    Ok((result, assumption_count))
                 } else {
                     Err(ErrorWithPos {
                         message: format!(
@@ -158,8 +187,8 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
             // ->_E
             Term::App(t1, t2) => {
                 let ty1 = type_of(ctx, t1)?;
-                let pf1 = walk(ctx, t1, d + 1)?;
-                let pf2 = walk(ctx, t2, d + 1)?;
+                let (pf1, assumption_count) = walk(ctx, t1, d + 1, assumption_count)?;
+                let (pf2, assumption_count) = walk(ctx, t2, d + 1, assumption_count)?;
                 match ty1 {
                     Type::Arr(_ty11, ty12) => {
                         let mut result = indented(d, "rule(");
@@ -168,7 +197,7 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                         result += &with_comma(&pf1);
                         result += &with_comma(&pf2);
                         result += &indented(d, ")");
-                        Ok(result)
+                        Ok((result, assumption_count))
                     }
                     _ => Err(ErrorWithPos {
                         message: format!(
@@ -185,7 +214,8 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
         }
     }
 
-    result += &walk(ctx, t, 1)?;
+    let (r, _assumption_count) = &walk(ctx, t, 1, 1)?;
+    result += r;
     result += ")\n";
     Ok(result)
 }
