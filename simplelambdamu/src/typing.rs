@@ -1,5 +1,3 @@
-use rstest::rstest;
-
 use crate::{
     span::{ErrorWithPos, Spanned},
     syntax::{context::Context, term::Term, r#type::Type},
@@ -136,154 +134,159 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
     }
 }
 
-// Helper function for creating spanned types in tests
-#[cfg(test)]
-fn spanned_type(ty: Type) -> Spanned<Type> {
-    Spanned {
-        v: ty,
-        start: 0,
-        line: 1,
-        column: 1,
-    }
-}
-
 #[allow(unused)]
-// Helper function to extract just the type structure, ignoring position info
-#[cfg(test)]
-fn extract_type_structure(ty: &Type) -> Type {
-    match ty {
-        Type::Arr(t1, t2) => Type::Arr(
-            Box::new(spanned_type(extract_type_structure(&t1.v))),
-            Box::new(spanned_type(extract_type_structure(&t2.v))),
-        ),
-        Type::Bot => Type::Bot,
-        Type::TyVar(x) => Type::TyVar(x.clone()),
-    }
-}
+mod tests {
+    use rstest::rstest;
 
-#[rstest]
-#[case(
-    r"\:Bool.0",
-    Some(Type::Arr(Box::new(spanned_type(Type::TyVar("Bool".to_string()))), Box::new(spanned_type(Type::TyVar("Bool".to_string())))))
-)]
-#[case(
-    r"\x:Bool.x",
-    Some(Type::Arr(Box::new(spanned_type(Type::TyVar("Bool".to_string()))), Box::new(spanned_type(Type::TyVar("Bool".to_string())))))
-)]
-#[case(
-    r"\:Bool.\:Bool.0",
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        )))
-    ))
-)]
-#[case(
-    r"\x:Bool.\y:Bool.x",
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        )))
-    ))
-)]
-#[case(
-    r"\x:Bool.\y:Bool.y",
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        )))
-    ))
-)]
-#[case(
-    r"\:Bool->Bool.0",
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        ))),
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        ))),
-    ))
-)]
-#[case(
-    r"\f:Bool->Bool.f",
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        ))),
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-        ))),
-    ))
-)]
-#[case(r"(\:Bool->Bool.0) \:Bool.0", 
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-        Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-    ))
-)]
-#[case(r"(\f:Bool->Bool.f) \x:Bool.x", 
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
-        Box::new(spanned_type(Type::TyVar("Bool".to_string())))
-    ))
-)]
-#[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
-#[case(r"(\f:(Bool->Bool)->Bool.0) \x:Bool.x", None)]
-#[case(r"\g:(A->Bot)->Bot./alpha:!A.g alpha",
-    Some(Type::Arr(
-        Box::new(spanned_type(Type::Arr(
-            Box::new(spanned_type(Type::Arr(
-                Box::new(spanned_type(Type::TyVar("A".to_string()))),
-                Box::new(spanned_type(Type::Bot))
-            ))),
-            Box::new(spanned_type(Type::Bot))
-        ))),
-        Box::new(spanned_type(Type::TyVar("A".to_string())))
-    ))
-)]
-fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
-    use crate::parser;
-    println!("input: {}", input);
+    use crate::{span::Spanned, syntax::r#type::Type};
 
-    let ctx = Context::default();
-    let t = parser::parse(input).unwrap();
-    let ty = type_of_spanned(
-        &ctx,
-        &Spanned {
-            v: t,
+    // Helper function for creating spanned types in tests
+    fn spanned_type(ty: Type) -> Spanned<Type> {
+        Spanned {
+            v: ty,
             start: 0,
             line: 1,
             column: 1,
-        },
-    );
-    match expected {
-        Some(ty2) => {
-            if ty.is_err() {
-                println!("expected: Some({:?})", ty2);
-                println!("actual: {:?}", ty);
-                panic!();
-            }
-            let result_ty = ty.unwrap();
-            let extracted_result = extract_type_structure(&result_ty);
-            println!("expected: {}", ty2);
-            println!("actual: {}", extracted_result);
-            assert_eq!(extracted_result, ty2);
         }
-        None => {
-            println!("expected: None");
-            println!("actual: {:?}", ty);
-            assert!(ty.is_err())
+    }
+
+    // Helper function to extract just the type structure, ignoring position info
+    fn extract_type_structure(ty: &Type) -> Type {
+        match ty {
+            Type::Arr(t1, t2) => Type::Arr(
+                Box::new(spanned_type(extract_type_structure(&t1.v))),
+                Box::new(spanned_type(extract_type_structure(&t2.v))),
+            ),
+            Type::Bot => Type::Bot,
+            Type::TyVar(x) => Type::TyVar(x.clone()),
+        }
+    }
+
+    #[cfg(test)]
+    #[rstest]
+    #[case(
+        r"\:Bool.0",
+        Some(Type::Arr(Box::new(spanned_type(Type::TyVar("Bool".to_string()))), Box::new(spanned_type(Type::TyVar("Bool".to_string())))))
+    )]
+    #[case(
+        r"\x:Bool.x",
+        Some(Type::Arr(Box::new(spanned_type(Type::TyVar("Bool".to_string()))), Box::new(spanned_type(Type::TyVar("Bool".to_string())))))
+    )]
+    #[case(
+        r"\:Bool.\:Bool.0",
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            )))
+        ))
+    )]
+    #[case(
+        r"\x:Bool.\y:Bool.x",
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            )))
+        ))
+    )]
+    #[case(
+        r"\x:Bool.\y:Bool.y",
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            )))
+        ))
+    )]
+    #[case(
+        r"\:Bool->Bool.0",
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            ))),
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            ))),
+        ))
+    )]
+    #[case(
+        r"\f:Bool->Bool.f",
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            ))),
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+                Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+            ))),
+        ))
+    )]
+    #[case(r"(\:Bool->Bool.0) \:Bool.0", 
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+        ))
+    )]
+    #[case(r"(\f:Bool->Bool.f) \x:Bool.x", 
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::TyVar("Bool".to_string()))),
+            Box::new(spanned_type(Type::TyVar("Bool".to_string())))
+        ))
+    )]
+    #[case(r"(\:(Bool->Bool)->Bool.0) \:Bool.0", None)]
+    #[case(r"(\f:(Bool->Bool)->Bool.0) \x:Bool.x", None)]
+    #[case(r"\g:(A->Bot)->Bot./alpha:!A.g alpha",
+        Some(Type::Arr(
+            Box::new(spanned_type(Type::Arr(
+                Box::new(spanned_type(Type::Arr(
+                    Box::new(spanned_type(Type::TyVar("A".to_string()))),
+                    Box::new(spanned_type(Type::Bot))
+                ))),
+                Box::new(spanned_type(Type::Bot))
+            ))),
+            Box::new(spanned_type(Type::TyVar("A".to_string())))
+        ))
+    )]
+    fn test_type_of(#[case] input: &str, #[case] expected: Option<Type>) {
+        use crate::{parser, syntax::context::Context, typing::type_of_spanned};
+        println!("input: {}", input);
+
+        let ctx = Context::default();
+        let t = parser::parse(input).unwrap();
+        let ty = type_of_spanned(
+            &ctx,
+            &Spanned {
+                v: t,
+                start: 0,
+                line: 1,
+                column: 1,
+            },
+        );
+        match expected {
+            Some(ty2) => {
+                if ty.is_err() {
+                    println!("expected: Some({:?})", ty2);
+                    println!("actual: {:?}", ty);
+                    panic!();
+                }
+                let result_ty = ty.unwrap();
+                let extracted_result = extract_type_structure(&result_ty);
+                println!("expected: {}", ty2);
+                println!("actual: {}", extracted_result);
+                assert_eq!(extracted_result, ty2);
+            }
+            None => {
+                println!("expected: None");
+                println!("actual: {:?}", ty);
+                assert!(ty.is_err())
+            }
         }
     }
 }
