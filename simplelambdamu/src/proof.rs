@@ -48,8 +48,11 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
 
     fn walk(ctx: &Context, t: &Spanned<Term>, d: usize) -> Result<String, ErrorWithPos> {
         match &t.v {
-            Term::Var(x) => match ctx.get(*x) {
-                Some(ty) => Ok(indented(d, &format!("$[{}]^{}$", type_to_formula(ty), x))),
+            Term::Var(x, info) => match ctx.get(*x) {
+                Some(ty) => Ok(indented(
+                    d,
+                    &format!("$[{}]^{}$", type_to_formula(ty), info.assumption_num),
+                )),
                 None => Err(ErrorWithPos {
                     message: format!("type check failed: {}\n: unbound variable {}", t.v, x),
                     level: 100,
@@ -66,15 +69,15 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                 column: t.column,
             }),
             // ->_I
-            Term::Abs(ty, t2) => {
-                let ctx = ctx.clone().push(ty.clone());
+            Term::Abs(ty, t2, info) => {
+                let ctx = ctx.clone().push(ty.clone(), info.clone());
                 let ty2 = type_of(&ctx, t2)?;
                 let pf2 = walk(&ctx, t2, d + 1)?;
                 println!("t2= {}", t2.v);
                 let mut result = indented(d, "rule(");
                 result += &indented(
                     d + 1,
-                    &format!("name: $scripts(->)_\"I\", {}$,", "\"todo\""),
+                    &format!("name: $scripts(->)_\"I\", {}$,", info.assumption_num),
                 );
                 result += &indented(
                     d + 1,
@@ -101,8 +104,8 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                 Ok(result)
             }
             // bot_C
-            Term::MAbs(ty, t2) => {
-                let ctx = ctx.clone().push(ty.clone());
+            Term::MAbs(ty, t2, info) => {
+                let ctx = ctx.clone().push(ty.clone(), info.clone());
                 let ty2: Type = type_of(&ctx, t2)?;
                 if ty2 != Type::Bot {
                     return Err(ErrorWithPos {
@@ -131,7 +134,10 @@ pub fn typst_proof(ctx: &Context, t: &Spanned<Term>) -> Result<String, ErrorWith
                     }
                     let pf2 = walk(&ctx, t2, d + 1)?;
                     let mut result = indented(d, "rule(");
-                    result += &indented(d + 1, &format!("name: $bot_\"C\", {}$,", "\"todo\""));
+                    result += &indented(
+                        d + 1,
+                        &format!("name: $bot_\"C\", {}$,", info.assumption_num),
+                    );
                     result += &indented(d + 1, &format!("${}$,", type_to_formula(&ty1.v)));
                     result += &with_comma(&pf2);
                     result += &indented(d, ")");

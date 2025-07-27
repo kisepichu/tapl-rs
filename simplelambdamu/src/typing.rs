@@ -16,7 +16,7 @@ fn types_equal_ignore_pos(ty1: &Type, ty2: &Type) -> bool {
 
 pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
     match &t.v {
-        Term::Var(x) => match ctx.get(*x) {
+        Term::Var(x, _info) => match ctx.get(*x) {
             Some(ty) => Ok(ty.clone()),
             None => Err(ErrorWithPos {
                 message: format!("type check failed: {}\n: unbound variable {}", t.v, x),
@@ -33,9 +33,10 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
             line: t.line,
             column: t.column,
         }),
-        Term::Abs(ty, t2) => {
-            let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of(&ctx, t2)?;
+        Term::Abs(ty, t2, info) => {
+            let mut new_ctx = ctx.clone();
+            new_ctx = new_ctx.push(ty.clone(), info.clone());
+            let ty2 = type_of(&new_ctx, t2)?;
             Ok(Type::Arr(
                 Box::new(Spanned {
                     v: ty.clone(),
@@ -51,9 +52,10 @@ pub fn type_of(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
                 }),
             ))
         }
-        Term::MAbs(ty, t2) => {
-            let ctx = ctx.clone().push(ty.clone());
-            let ty2 = type_of(&ctx, t2)?;
+        Term::MAbs(ty, t2, info) => {
+            let mut new_ctx = ctx.clone();
+            new_ctx = new_ctx.push(ty.clone(), info.clone());
+            let ty2 = type_of(&new_ctx, t2)?;
             if ty2 != Type::Bot {
                 return Err(ErrorWithPos {
                     message: format!(

@@ -1,7 +1,10 @@
 use crate::{
     parser::utils::{chmax_err, update_err, with_pos},
     span::{ErrorWithPos, Prg, Span, Spanned},
-    syntax::{term::Term, r#type::Type},
+    syntax::{
+        term::{Info, Term},
+        r#type::Type,
+    },
 };
 use nom::{
     IResult, Parser,
@@ -48,8 +51,8 @@ fn parse_tyencl(i: Span) -> IResult<Span, Prg<Type>, ErrorWithPos> {
 /// <ident> ::= <ident> (alphabet|digit) | alphabet
 fn parse_ident_span(i: Span) -> IResult<Span, Prg<String>, ErrorWithPos> {
     let start_pos = (i.location_offset(), i.location_line(), i.get_utf8_column());
-    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_")))).parse(i)?;
-    let (i, s) = many0(alt((alpha1, digit1, tag("_")))).parse(i)?;
+    let (i, s0) = preceded(multispace0, alt((alpha1, tag("_"), tag("'")))).parse(i)?;
+    let (i, s) = many0(alt((alpha1, digit1, tag("_"), tag("'")))).parse(i)?;
     let s = once(s0.fragment())
         .chain(s.iter().map(|x| x.fragment()))
         .fold("".to_string(), |acc, c| acc + c);
@@ -184,7 +187,15 @@ fn parse_varnum(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
         "variable must be numeric",
         90,
         with_pos(map_res(digit1, |s: Span| {
-            s.fragment().parse::<usize>().map(Term::Var)
+            s.fragment().parse::<usize>().map(|x| {
+                Term::Var(
+                    x,
+                    Info {
+                        name: x.to_string(),
+                        assumption_num: x,
+                    },
+                )
+            })
         })),
     )
     .parse(i)
@@ -247,9 +258,23 @@ fn parse_mabs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let result = match name.clone() {
         Some(name) => {
             let renamed = t.st.v.subst_name_spanned(&name.st.v, &t.st);
-            Term::MAbs(ty.st.v, Box::new(renamed))
+            Term::MAbs(
+                ty.st.v,
+                Box::new(renamed),
+                Info {
+                    name: name.st.v,
+                    assumption_num: 0,
+                },
+            )
         }
-        None => Term::MAbs(ty.st.v, Box::new(t.st)),
+        None => Term::MAbs(
+            ty.st.v,
+            Box::new(t.st),
+            Info {
+                name: "".to_string(),
+                assumption_num: 0,
+            },
+        ),
     };
     Ok((
         i,
@@ -304,9 +329,23 @@ fn parse_labs(i: Span) -> IResult<Span, Prg<Term>, ErrorWithPos> {
     let result = match name.clone() {
         Some(name) => {
             let renamed = t.st.v.subst_name_spanned(&name.st.v, &t.st);
-            Term::Abs(ty.st.v, Box::new(renamed))
+            Term::Abs(
+                ty.st.v,
+                Box::new(renamed),
+                Info {
+                    name: name.st.v,
+                    assumption_num: 0,
+                },
+            )
         }
-        None => Term::Abs(ty.st.v, Box::new(t.st)),
+        None => Term::Abs(
+            ty.st.v,
+            Box::new(t.st),
+            Info {
+                name: "".to_string(),
+                assumption_num: 0,
+            },
+        ),
     };
     Ok((
         i,
@@ -483,7 +522,10 @@ mod test {
     #[allow(unused)]
     use crate::{
         span::Spanned,
-        syntax::{term::Term, r#type::Type},
+        syntax::{
+            term::{Info, Term},
+            r#type::Type,
+        },
     };
 
     #[allow(unused)]
@@ -511,15 +553,17 @@ mod test {
     // Helper function to extract just the term structure, ignoring position info
     fn extract_term_structure(term: &Term) -> Term {
         match term {
-            Term::Var(x) => Term::Var(*x),
+            Term::Var(x, info) => Term::Var(*x, info.clone()),
             Term::TmpVar(s) => Term::TmpVar(s.clone()),
-            Term::Abs(ty, t) => Term::Abs(
+            Term::Abs(ty, t, info) => Term::Abs(
                 extract_type_structure(ty),
                 Box::new(spanned(extract_term_structure(&t.v))),
+                info.clone(),
             ),
-            Term::MAbs(ty, t) => Term::MAbs(
+            Term::MAbs(ty, t, info) => Term::MAbs(
                 extract_type_structure(ty),
                 Box::new(spanned(extract_term_structure(&t.v))),
+                info.clone(),
             ),
             Term::App(t1, t2) => Term::App(
                 Box::new(spanned(extract_term_structure(&t1.v))),
@@ -541,30 +585,52 @@ mod test {
     }
 
     #[rstest]
-    #[case("1", Some(Term::Var(1)))]
+    #[case("1", Some(Term::Var(1, Info { name: "1".to_string(), assumption_num: 1 })))]
     #[case(
         r"\:Bool.0 ",
-        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0)))))
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0, Info { name: "0".to_string(), assumption_num: 0 }))), Info { name: "".to_string(), assumption_num: 0 }))
     )]
     #[case(
         r"\x:Bool.x",
-        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0)))))
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0, Info { name: "x".to_string(), assumption_num: 0 }))), Info { name: "x".to_string(), assumption_num: 0 }))
     )]
     #[case(
         r"\x:Bool.\y:Bool.x",
-        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(1))))))))
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(1, Info { name: "x".to_string(), assumption_num: 1 }))), Info { name: "y".to_string(), assumption_num: 0 }))), Info { name: "x".to_string(), assumption_num: 0 }))
     )]
     #[case(
         r"\x:Bool.\y:Bool.y",
-        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0))))))))
+        Some(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Bool".to_string()), Box::new(spanned(Term::Var(0, Info { name: "y".to_string(), assumption_num: 0 }))), Info { name: "y".to_string(), assumption_num: 0 }))), Info { name: "x".to_string(), assumption_num: 0 }))
     )]
     #[case(
         r"\:P.\:Q.0 1",
-        Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(0))), Box::new(spanned(Term::Var(1)))))))))))
+        Some(Term::Abs(
+            Type::TyVar("P".to_string()),
+                            Box::new(spanned(Term::Abs(
+                    Type::TyVar("Q".to_string()),
+                    Box::new(spanned(Term::App(
+                        Box::new(spanned(Term::Var(0, Info { name: "0".to_string(), assumption_num: 0 }))),
+                        Box::new(spanned(Term::Var(1, Info { name: "1".to_string(), assumption_num: 1 })))
+                    ))),
+                    Info { name: "".to_string(), assumption_num: 0 }
+                ))),
+            Info { name: "".to_string(), assumption_num: 0 }
+        ))
     )]
     #[case(
         r"\x:P.\y:Q.x y",
-        Some(Term::Abs(Type::TyVar("P".to_string()), Box::new(spanned(Term::Abs(Type::TyVar("Q".to_string()), Box::new(spanned(Term::App(Box::new(spanned(Term::Var(1))), Box::new(spanned(Term::Var(0)))))))))))
+        Some(Term::Abs(
+            Type::TyVar("P".to_string()),
+                            Box::new(spanned(Term::Abs(
+                    Type::TyVar("Q".to_string()),
+                    Box::new(spanned(Term::App(
+                        Box::new(spanned(Term::Var(1, Info { name: "x".to_string(), assumption_num: 1 }))),
+                        Box::new(spanned(Term::Var(0, Info { name: "y".to_string(), assumption_num: 0 })))
+                    ))),
+                    Info { name: "y".to_string(), assumption_num: 0 }
+                ))),
+            Info { name: "x".to_string(), assumption_num: 0 }
+        ))
     )]
     #[case(
         r"\f:!!A->A.f",
@@ -579,7 +645,8 @@ mod test {
                 ))),
                 Box::new(spanned_type(Type::TyVar("A".to_string())))
             ),
-            Box::new(spanned(Term::Var(0)))
+            Box::new(spanned(Term::Var(0, Info { name: "f".to_string(), assumption_num: 0 }))),
+            Info { name: "f".to_string(), assumption_num: 0 }
         ))
     )]
     #[case(r"\", None)]
