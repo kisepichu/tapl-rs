@@ -1,3 +1,6 @@
+use typst::diag::EcoString;
+use typst_syntax::package::PackageVersion;
+
 use crate::{
     span::{ErrorWithPos, Spanned},
     syntax::{
@@ -251,7 +254,18 @@ pub fn render_typst_to_svg(input: &str) -> String {
         }
 
         fn main(&self) -> FileId {
-            FileId::new(None, VirtualPath::new("main.typ"))
+            FileId::new(
+                Some(typst_syntax::package::PackageSpec {
+                    namespace: EcoString::new(),
+                    name: EcoString::new(),
+                    version: PackageVersion {
+                        major: 0,
+                        minor: 0,
+                        patch: 0,
+                    },
+                }),
+                VirtualPath::new("main.typ"),
+            )
         }
 
         fn source(&self, _id: FileId) -> typst_library::diag::FileResult<Source> {
@@ -262,7 +276,9 @@ pub fn render_typst_to_svg(input: &str) -> String {
             &self,
             _id: FileId,
         ) -> typst_library::diag::FileResult<typst_library::foundations::Bytes> {
-            Err(typst_library::diag::FileError::NotFound(PathBuf::new()))
+            // 文字列からの変換なので、ファイルは必要ない
+            // 空のバイトデータを返す
+            Ok(typst_library::foundations::Bytes::new("".as_bytes()))
         }
 
         fn font(&self, _index: usize) -> Option<typst_library::text::Font> {
