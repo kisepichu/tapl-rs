@@ -4,11 +4,16 @@ use super::r#type::Type;
 use crate::span::Spanned;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Info {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Term {
-    Var(usize),
+    Var(usize, Info),
     TmpVar(String),
-    Abs(Type, Box<Spanned<Term>>),
-    MAbs(Type, Box<Spanned<Term>>),
+    Abs(Type, Box<Spanned<Term>>, Info),
+    MAbs(Type, Box<Spanned<Term>>, Info),
     App(Box<Spanned<Term>>, Box<Spanned<Term>>),
 }
 
@@ -16,20 +21,20 @@ impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fn p(term: &Term, has_arg_after: bool, is_app_right: bool) -> String {
             match term {
-                Term::Var(x) => format!("{}", x),
+                Term::Var(x, info) => format!("{}", info.name),
                 Term::TmpVar(x) => x.to_string(),
-                Term::Abs(ty, t) => {
+                Term::Abs(ty, t, info) => {
                     if has_arg_after {
-                        format!("(\\:{}.{})", ty, p(&t.v, false, false))
+                        format!("(\\{}:{}.{})", info.name, ty, p(&t.v, false, false))
                     } else {
-                        format!("\\:{}.{}", ty, p(&t.v, false, false))
+                        format!("\\{}:{}.{}", info.name, ty, p(&t.v, false, false))
                     }
                 }
-                Term::MAbs(ty, t) => {
+                Term::MAbs(ty, t, info) => {
                     if has_arg_after {
-                        format!("(/:{}.{})", ty, p(&t.v, false, false))
+                        format!("(/{}:{}.{})", info.name, ty, p(&t.v, false, false))
                     } else {
-                        format!("/:{}.{}", ty, p(&t.v, false, false))
+                        format!("/{}:{}.{}", info.name, ty, p(&t.v, false, false))
                     }
                 }
                 Term::App(t1, t2) => {
@@ -55,7 +60,7 @@ impl fmt::Display for Term {
 
 impl Term {
     pub fn isval(&self) -> bool {
-        matches!(self, Term::Abs(_, _)) || matches!(self, Term::Var(_))
+        matches!(self, Term::Abs(_, _, _)) || matches!(self, Term::Var(_, _))
     }
 
     /// 位置情報を保持しながら変数名を数値に変換する
@@ -77,7 +82,7 @@ impl Term {
                 Term::TmpVar(s) => {
                     if z == *s {
                         Spanned {
-                            v: Term::Var(c),
+                            v: Term::Var(c, Info { name: *s }),
                             start: t.start,
                             line: t.line,
                             column: t.column,
