@@ -248,7 +248,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                 if t2_.isval()
                     || (*strategy != Strategy::Cbv && *strategy != Strategy::CbvWithEta) =>
             {
-                println!("E-BETA: {}", t);
+                // println!("E-BETA: {}", t);
                 resolve_conflicts(
                     ctx,
                     &Spanned {
@@ -262,13 +262,13 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
             }
             // E-MUBETA
             (n1, Term::MAbs(_ty, t22, _)) if is_neg_type(n1, ctx) => {
-                println!("E-MUBETA: {}", t);
+                // println!("E-MUBETA: {}", t);
                 term_subst_top(n1, &t22.v)?
             }
             // E-STR
             (Term::MAbs(Type::Arr(tyab, tybot), t12, _), _) if tybot.v == Type::Bot => {
                 if let Type::Arr(_tya, tyb) = &tyab.v {
-                    println!("E-STR: {}", t);
+                    // println!("E-STR: {}", t);
                     fn asterisk(t: &Spanned<Term>, t2: &Spanned<Term>) -> Spanned<Term> {
                         fn walk(t: &Spanned<Term>, t2: &Spanned<Term>, c: usize) -> Spanned<Term> {
                             match &t.v {
@@ -357,7 +357,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                     && v1.isval()
                     && tybot.v == Type::Bot =>
             {
-                println!("E-STRV: {}", t);
+                // println!("E-STRV: {}", t);
                 fn star(t: &Spanned<Term>, v1: &Spanned<Term>) -> Spanned<Term> {
                     fn walk(t: &Spanned<Term>, v1: &Spanned<Term>, c: usize) -> Spanned<Term> {
                         match &t.v {
@@ -443,7 +443,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
             }
             // E-APP2
             (v1, _) if v1.isval() => {
-                println!("E-APP2: {}", t);
+                // println!("E-APP2: {}", t);
                 Term::App(
                     t1.clone(),
                     Box::new(Spanned {
@@ -456,7 +456,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
             }
             // E-APP1
             _ => {
-                println!("E-APP1: {}", t);
+                // println!("E-APP1: {}", t);
                 Term::App(
                     Box::new(Spanned {
                         v: eval1(&t1.v, ctx, strategy)?,
@@ -477,12 +477,12 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                     && !zero_in_fv(&t21.v)
                     && matches!(tvar0.v, Term::Var(0, _)) =>
             {
-                println!("E-ETA: {}", t);
+                // println!("E-ETA: {}", t);
                 Ok(term_shift(&t21.v, -1)?)
             }
             // (E-LAM)
             _ if *strategy == Strategy::NormalOrder => {
-                println!("E-LAM: {}", t);
+                // println!("E-LAM: {}", t);
                 let mut new_ctx = ctx.clone();
                 new_ctx = new_ctx.push(ty.clone(), info.clone());
                 Ok(Term::Abs(
@@ -501,12 +501,12 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
         Term::MAbs(ty, t2, info) => match &t2.v {
             // E-MUETA
             Term::App(tvar0, t22) if !zero_in_fv(&t22.v) && matches!(tvar0.v, Term::Var(0, _)) => {
-                println!("E-MUETA: {}", t);
+                // println!("E-MUETA: {}", t);
                 Ok(term_shift(&t22.v, -1)?)
             }
             // (E-MU)
             _ if *strategy == Strategy::NormalOrder => {
-                println!("E-MU: {}", t);
+                // println!("E-MU: {}", t);
                 let mut new_ctx = ctx.clone();
                 new_ctx = new_ctx.push(ty.clone(), info.clone());
                 Ok(Term::MAbs(

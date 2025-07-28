@@ -9,13 +9,12 @@ use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 use typing::type_of;
 
-use crate::proof::{render_typst_to_svg, typst_proof};
+use crate::proof::typst_proof;
 use crate::syntax::context::Context;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
     let mut current_strategy = eval::Strategy::Cbv;
-    let mut proof = String::new();
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -32,10 +31,6 @@ fn main() -> Result<()> {
                     println!("     ->* \\:N->N.\\:N.0");
                     println!("Ctrl+C to exit");
                     continue;
-                }
-                if line == "svg" {
-                    // print svg string
-                    println!("{}", render_typst_to_svg(&proof));
                 }
                 if line.starts_with("strategy") {
                     let strategies = [
@@ -91,7 +86,7 @@ fn main() -> Result<()> {
                 };
                 // println!("{:?}", ty);
 
-                proof = match typst_proof(&ctx, &t) {
+                let proof = match typst_proof(&ctx, &t) {
                     Ok(pf) => pf,
                     Err(e) => {
                         println!("input= {}", t.v);
