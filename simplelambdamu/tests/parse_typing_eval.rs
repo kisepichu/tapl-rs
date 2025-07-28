@@ -5,7 +5,7 @@ use simplelambdamu::eval::Strategy;
 #[rstest]
 // (\f:!(N->N)->N->N. /alpha:!(N->N). alpha (f \x:N->N. alpha x)) \k:(N->N)->Bot. /alpha:!(N->N). alpha \n:N.n
 #[case(
-    Strategy::Cbv,
+    Strategy::from("cbv").unwrap(),
     "(\\f:!(N->N)->N->N. /alpha:!(N->N). alpha (f \\x:N->N. alpha x)) \\k:(N->N)->Bot. /alpha:!(N->N). alpha \\n:N.n",
     Some(
         "(\\f:((N->N)->Bot)->N->N./alpha:(N->N)->Bot.alpha (f \\x:N->N.alpha x)) \\k:(N->N)->Bot./alpha:(N->N)->Bot.alpha \\n:N.n"
@@ -17,14 +17,14 @@ use simplelambdamu::eval::Strategy;
 )]
 // \s:N->N. \z:N. /alpha:!N. alpha (s (s /beta:!N. alpha z))
 #[case(
-    Strategy::Cbv,
+    Strategy::from("cbv").unwrap(),
     "\\s:N->N. \\z:N. /alpha:!N. alpha (s (s /beta:!N. alpha z))",
     Some("\\s:N->N.\\z:N./alpha:N->Bot.alpha (s (s /beta:N->Bot.alpha z))"),
     Some("(N->N)->N->N"),
     Some("\\s:N->N.\\z:N./alpha:N->Bot.alpha (s (s /beta:N->Bot.alpha z))")
 )]
 #[case(
-    Strategy::NormalOrder,
+    Strategy::from("normalorderwitheta").unwrap(),
     "\\s:N->N. \\z:N. /alpha:!N. alpha (s (s /beta:!N. alpha z))",
     Some("\\s:N->N.\\z:N./alpha:N->Bot.alpha (s (s /beta:N->Bot.alpha z))"),
     Some("(N->N)->N->N"),
@@ -32,7 +32,7 @@ use simplelambdamu::eval::Strategy;
 )]
 // \g: !!A. (\f:!A->A. /alpha:!A. alpha (f \x:A. alpha x)) \k:A->Bot. /alpha:!A. g k
 #[case(
-    Strategy::Cbv,
+    Strategy::from("cbv").unwrap(),
     "\\g: !!A. (\\f:!A->A. /alpha:!A. alpha (f \\x:A. alpha x)) \\k:A->Bot. /alpha:!A. g k",
     Some(
         "\\g:(A->Bot)->Bot.(\\f:(A->Bot)->A./alpha:A->Bot.alpha (f \\x:A.alpha x)) \\k:A->Bot./alpha:A->Bot.g k"
@@ -43,7 +43,7 @@ use simplelambdamu::eval::Strategy;
     )
 )]
 #[case(
-    Strategy::NormalOrder,
+    Strategy::from("normalorderwitheta").unwrap(),
     "\\g: !!A. (\\f:!A->A. /alpha:!A. alpha (f \\x:A. alpha x)) \\k:A->Bot. /alpha:!A. g k",
     Some(
         "\\g:(A->Bot)->Bot.(\\f:(A->Bot)->A./alpha:A->Bot.alpha (f \\x:A.alpha x)) \\k:A->Bot./alpha:A->Bot.g k"

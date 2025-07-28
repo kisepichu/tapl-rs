@@ -5,6 +5,7 @@ mod span;
 mod syntax;
 mod typing;
 
+use eval::{Strategy, eval};
 use proof::typst_proof;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
@@ -13,6 +14,7 @@ use typing::type_of_spanned;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
+    let mut current_strategy = Strategy::from("cbv").unwrap();
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -26,6 +28,36 @@ fn main() -> Result<()> {
                     println!("     ->* true");
                     println!("     ->* \\:Bool.\\:Bool.1");
                     println!("Ctrl+C to exit");
+                    continue;
+                }
+                if line.starts_with("strategy") {
+                    let input = line.split_whitespace().nth(1);
+                    if let Some(input) = input {
+                        match Strategy::from(input) {
+                            Ok(strategy) => {
+                                current_strategy = strategy;
+                                println!("Strategy set to: {}", input);
+                            }
+                            Err(_) => {
+                                println!("Unknown strategy: {}", input);
+                                println!("Available strategies:");
+                                println!("  normalorder");
+                                println!("  normalorderwitheta");
+                                println!("  cbv");
+                                println!("  cbn");
+                                println!("  cbvwitheta");
+                                println!("  cbnwitheta");
+                            }
+                        }
+                    } else {
+                        println!("Available strategies:");
+                        println!("  normalorder");
+                        println!("  normalorderwitheta");
+                        println!("  cbv");
+                        println!("  cbn");
+                        println!("  cbvwitheta");
+                        println!("  cbnwitheta");
+                    }
                     continue;
                 }
 
@@ -69,7 +101,7 @@ fn main() -> Result<()> {
                 println!("proof=\n\n{}", proof);
 
                 println!("input= {}: {}", t.v, ty);
-                let t = match eval::eval(&t.v) {
+                let t = match eval(&t.v, &current_strategy) {
                     Ok(t) => t,
                     Err(e) => {
                         println!("eval error: {}", e);

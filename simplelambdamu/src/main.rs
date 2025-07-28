@@ -14,7 +14,7 @@ use crate::syntax::context::Context;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
-    let mut current_strategy = eval::Strategy::Cbv;
+    let mut current_strategy = eval::Strategy::from("cbv").unwrap();
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -33,32 +33,24 @@ fn main() -> Result<()> {
                     continue;
                 }
                 if line.starts_with("strategy") {
-                    let strategies = [
-                        ("normalorder", eval::Strategy::NormalOrder),
-                        ("cbv", eval::Strategy::Cbv),
-                        ("cbn", eval::Strategy::Cbn),
-                        ("cbvwitheta", eval::Strategy::CbvWithEta),
-                        ("cbnwitheta", eval::Strategy::CbnWithEta),
-                    ];
-                    let input = line.split_whitespace().nth(1);
-                    if let Some(input) = input {
-                        if let Some((name, strategy)) = strategies.iter().find(|(n, _)| n == &input)
-                        {
-                            current_strategy = strategy.clone();
-                            println!("Strategy set to: {}", name);
+                    if let Some(input) = line.split_whitespace().nth(1) {
+                        if let Ok(strategy) = eval::Strategy::from(input) {
+                            current_strategy = strategy;
+                            println!("Strategy set to: {}", current_strategy);
                         } else {
                             println!("Unknown strategy: {}", input);
-                            println!("Available strategies:");
-                            for (name, _) in &strategies {
-                                println!("  {}", name);
-                            }
+                            println!(
+                                "Available strategies: cbv, cbn, cbvwitheta, cbnwitheta, normalorder, normalorderwitheta"
+                            );
                         }
                     } else {
-                        println!("Available strategies:");
-                        for (name, _) in &strategies {
-                            println!("  {}", name);
-                        }
+                        println!("current strategy: {}", current_strategy);
+                        println!("strategy {{strategy}} to set the evaluation strategy");
+                        println!(
+                            "Available strategies: cbv, cbn, cbvwitheta, cbnwitheta, normalorder, normalorderwitheta"
+                        );
                     }
+
                     continue;
                 }
 
