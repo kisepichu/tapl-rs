@@ -2,23 +2,30 @@ use num::FromPrimitive;
 
 use crate::{
     span::Spanned,
-    syntax::{context::Context, term::Term, r#type::Type},
-    typing::type_of_spanned,
+    syntax::{
+        context::Context,
+        term::{Info, Term},
+        r#type::Type,
+    },
+    typing::type_of,
 };
+
+pub mod strategy;
+pub use strategy::Strategy;
 
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
     fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {
         match t {
-            Term::Var(x) => {
+            Term::Var(x, info) => {
                 if *x >= c {
                     let s: usize = usize::from_isize(*x as isize + d).ok_or("minus after shift")?;
-                    Ok(Term::Var(s))
+                    Ok(Term::Var(s, info.clone()))
                 } else {
-                    Ok(Term::Var(*x))
+                    Ok(Term::Var(*x, info.clone()))
                 }
             }
             Term::TmpVar(_) => Ok(t.clone()),
-            Term::Abs(ty, t1) => Ok(Term::Abs(
+            Term::Abs(ty, t1, info) => Ok(Term::Abs(
                 ty.clone(),
                 Box::new(Spanned {
                     v: walk(&t1.v, d, c + 1)?,
@@ -26,8 +33,9 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
                     line: t1.line,
                     column: t1.column,
                 }),
+                info.clone(),
             )),
-            Term::MAbs(ty, t1) => Ok(Term::MAbs(
+            Term::MAbs(ty, t1, info) => Ok(Term::MAbs(
                 ty.clone(),
                 Box::new(Spanned {
                     v: walk(&t1.v, d, c + 1)?,
@@ -35,6 +43,7 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
                     line: t1.line,
                     column: t1.column,
                 }),
+                info.clone(),
             )),
             Term::App(t1, t2) => Ok(Term::App(
                 Box::new(Spanned {
@@ -58,15 +67,15 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
 fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
     fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
-            Term::Var(k) => {
+            Term::Var(k, info) => {
                 if Some(*k) == (j + c).try_into().ok() {
                     term_shift(s, c)
                 } else {
-                    Ok(Term::Var(*k))
+                    Ok(Term::Var(*k, info.clone()))
                 }
             }
             Term::TmpVar(_) => Ok(t.clone()),
-            Term::Abs(ty, t1) => Ok(Term::Abs(
+            Term::Abs(ty, t1, info) => Ok(Term::Abs(
                 ty.clone(),
                 Box::new(Spanned {
                     v: walk(j, s, c + 1, &t1.v)?,
@@ -74,8 +83,9 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
                     line: t1.line,
                     column: t1.column,
                 }),
+                info.clone(),
             )),
-            Term::MAbs(ty, t1) => Ok(Term::MAbs(
+            Term::MAbs(ty, t1, info) => Ok(Term::MAbs(
                 ty.clone(),
                 Box::new(Spanned {
                     v: walk(j, s, c + 1, &t1.v)?,
@@ -83,6 +93,7 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
                     line: t1.line,
                     column: t1.column,
                 }),
+                info.clone(),
             )),
             Term::App(t1, t2) => Ok(Term::App(
                 Box::new(Spanned {
@@ -110,10 +121,10 @@ fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
 fn zero_in_fv(t: &Term) -> bool {
     fn walk(t: &Term, c: usize) -> bool {
         match t {
-            Term::Var(k) => *k == c,
+            Term::Var(k, _) => *k == c,
             Term::TmpVar(_) => false,
-            Term::Abs(_, t1) => walk(&t1.v, c + 1),
-            Term::MAbs(_, t1) => walk(&t1.v, c + 1),
+            Term::Abs(_, t1, _) => walk(&t1.v, c + 1),
+            Term::MAbs(_, t1, _) => walk(&t1.v, c + 1),
             Term::App(t1, t2) => walk(&t1.v, c) || walk(&t2.v, c),
         }
     }
@@ -121,7 +132,7 @@ fn zero_in_fv(t: &Term) -> bool {
 }
 
 fn is_neg_type(t: &Term, ctx: &Context) -> bool {
-    let ty = type_of_spanned(
+    let ty = type_of(
         ctx,
         &Spanned {
             v: t.clone(),
@@ -137,117 +148,214 @@ fn is_neg_type(t: &Term, ctx: &Context) -> bool {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum Strategy {
-    NormalOrder,
-    Cbv,
-    Cbn,
-    CbvWithEta,
-    CbnWithEta,
+fn resolve_conflicts(ctx: &Context, t: &Spanned<Term>) -> Result<Spanned<Term>, String> {
+    fn walk(
+        ctx: &Context,
+        t: &Spanned<Term>,
+        used_names: &mut std::collections::HashSet<String>,
+    ) -> Result<Spanned<Term>, String> {
+        match &t.v {
+            Term::Var(x, _info) => {
+                if let Some(ctx_info) = ctx.get_info(*x) {
+                    Ok(Spanned {
+                        v: Term::Var(*x, ctx_info.clone()),
+                        start: t.start,
+                        line: t.line,
+                        column: t.column,
+                    })
+                } else {
+                    Ok(t.clone())
+                }
+            }
+            Term::TmpVar(_) => Ok(t.clone()),
+            Term::Abs(ty, t1, info) => {
+                let mut new_name = info.name.clone();
+                while used_names.contains(&new_name) {
+                    new_name.push('\'');
+                }
+                used_names.insert(new_name.clone());
+
+                let new_info = Info {
+                    name: new_name,
+                    assumption_num: info.assumption_num,
+                };
+
+                let mut new_ctx = ctx.clone();
+                new_ctx = new_ctx.push(ty.clone(), new_info.clone());
+
+                let new_t1 = walk(&new_ctx, t1, used_names)?;
+
+                Ok(Spanned {
+                    v: Term::Abs(ty.clone(), Box::new(new_t1), new_info),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                })
+            }
+            Term::MAbs(ty, t1, info) => {
+                let mut new_name = info.name.clone();
+                while used_names.contains(&new_name) {
+                    new_name.push('\'');
+                }
+                used_names.insert(new_name.clone());
+
+                let new_info = Info {
+                    name: new_name,
+                    assumption_num: info.assumption_num,
+                };
+
+                let mut new_ctx = ctx.clone();
+                new_ctx = new_ctx.push(ty.clone(), new_info.clone());
+
+                let new_t1 = walk(&new_ctx, t1, used_names)?;
+
+                Ok(Spanned {
+                    v: Term::MAbs(ty.clone(), Box::new(new_t1), new_info),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                })
+            }
+            Term::App(t1, t2) => {
+                let new_t1 = walk(ctx, t1, used_names)?;
+                let new_t2 = walk(ctx, t2, used_names)?;
+
+                Ok(Spanned {
+                    v: Term::App(Box::new(new_t1), Box::new(new_t2)),
+                    start: t.start,
+                    line: t.line,
+                    column: t.column,
+                })
+            }
+        }
+    }
+
+    let mut used_names = std::collections::HashSet::new();
+    walk(ctx, t, &mut used_names)
 }
 
 fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
     match t {
         Term::App(t1, t2) => Ok(match (&t1.v, &t2.v) {
             // E-BETA
-            (Term::Abs(_ty, t12), t2)
-                if t2.isval()
-                    || (*strategy != Strategy::Cbv && *strategy != Strategy::CbvWithEta) =>
-            {
-                println!("E-BETA: {}", t);
-                term_subst_top(t2, &t12.v)?
+            (Term::Abs(_ty, t12, _), t2_) if t2_.isval() || strategy.beta_cbn => {
+                // println!("E-BETA: {}", t);
+                resolve_conflicts(
+                    ctx,
+                    &Spanned {
+                        v: term_subst_top(t2_, &t12.v)?,
+                        start: t2.start,
+                        line: t2.line,
+                        column: t2.column,
+                    },
+                )?
+                .v
             }
             // E-MUBETA
-            (n1, Term::MAbs(_ty, t22)) if is_neg_type(n1, ctx) => {
-                println!("E-MUBETA: {}", t);
+            (n1, Term::MAbs(_ty, t22, _)) if is_neg_type(n1, ctx) => {
+                // println!("E-MUBETA: {}", t);
                 term_subst_top(n1, &t22.v)?
             }
             // E-STR
-            (Term::MAbs(Type::Arr(tyab, tybot), t12), _) if tybot.v == Type::Bot => {
-                if let Type::Arr(_tya, tyb) = &tyab.v {
-                    println!("E-STR: {}", t);
-                    fn asterisk(t: &Spanned<Term>, t2: &Spanned<Term>) -> Spanned<Term> {
-                        fn walk(t: &Spanned<Term>, t2: &Spanned<Term>, c: usize) -> Spanned<Term> {
-                            match &t.v {
-                                Term::App(alpha, u) => match alpha.v {
-                                    Term::Var(x) if x == c => Spanned {
-                                        v: Term::App(
-                                            Box::new(walk(alpha, t2, c)),
-                                            Box::new(Spanned {
-                                                v: Term::App(
-                                                    Box::new(walk(u, t2, c)),
-                                                    Box::new(t2.clone()),
-                                                ),
-                                                start: u.start,
-                                                line: u.line,
-                                                column: u.column,
-                                            }),
-                                        ),
-                                        start: t.start,
-                                        line: t.line,
-                                        column: t.column,
+            (Term::MAbs(Type::Arr(tyab, tybot), t12, _), _) if tybot.v == Type::Bot => {
+                {
+                    if let Type::Arr(_tya, tyb) = &tyab.v {
+                        // println!("E-STR: {}", t);
+                        fn asterisk(t: &Spanned<Term>, t2: &Spanned<Term>) -> Spanned<Term> {
+                            fn walk(
+                                t: &Spanned<Term>,
+                                t2: &Spanned<Term>,
+                                c: usize,
+                            ) -> Spanned<Term> {
+                                match &t.v {
+                                    Term::App(alpha, u) => match &alpha.v {
+                                        Term::Var(x, _info) if *x == c => Spanned {
+                                            v: Term::App(
+                                                Box::new(walk(alpha, t2, c)),
+                                                Box::new(Spanned {
+                                                    v: Term::App(
+                                                        Box::new(walk(u, t2, c)),
+                                                        Box::new(t2.clone()),
+                                                    ),
+                                                    start: u.start,
+                                                    line: u.line,
+                                                    column: u.column,
+                                                }),
+                                            ),
+                                            start: t.start,
+                                            line: t.line,
+                                            column: t.column,
+                                        },
+                                        _ => Spanned {
+                                            v: Term::App(
+                                                Box::new(walk(alpha, t2, c)),
+                                                Box::new(walk(u, t2, c)),
+                                            ),
+                                            start: t.start,
+                                            line: t.line,
+                                            column: t.column,
+                                        },
                                     },
-                                    _ => Spanned {
-                                        v: Term::App(
-                                            Box::new(walk(alpha, t2, c)),
-                                            Box::new(walk(u, t2, c)),
-                                        ),
-                                        start: t.start,
-                                        line: t.line,
-                                        column: t.column,
-                                    },
-                                },
 
-                                Term::Var(_) => t.clone(),
-                                Term::TmpVar(_) => t.clone(),
-                                Term::Abs(ty, t1) => Spanned {
-                                    v: Term::Abs(ty.clone(), Box::new(walk(t1, t2, c + 1))),
-                                    start: t.start,
-                                    line: t.line,
-                                    column: t.column,
-                                },
-                                Term::MAbs(ty, t1) => Spanned {
-                                    v: Term::MAbs(ty.clone(), Box::new(walk(t1, t2, c + 1))),
-                                    start: t.start,
-                                    line: t.line,
-                                    column: t.column,
-                                },
+                                    Term::Var(_, _) => t.clone(),
+                                    Term::TmpVar(_) => t.clone(),
+                                    Term::Abs(ty, t1, info) => Spanned {
+                                        v: Term::Abs(
+                                            ty.clone(),
+                                            Box::new(walk(t1, t2, c + 1)),
+                                            info.clone(),
+                                        ),
+                                        start: t.start,
+                                        line: t.line,
+                                        column: t.column,
+                                    },
+                                    Term::MAbs(ty, t1, info) => Spanned {
+                                        v: Term::MAbs(
+                                            ty.clone(),
+                                            Box::new(walk(t1, t2, c + 1)),
+                                            info.clone(),
+                                        ),
+                                        start: t.start,
+                                        line: t.line,
+                                        column: t.column,
+                                    },
+                                }
                             }
+                            walk(t, t2, 0)
                         }
-                        walk(t, t2, 0)
-                    }
 
-                    let t12_aster = asterisk(t12, t2);
-                    Ok(Term::MAbs(
-                        Type::Arr(
-                            tyb.clone(),
-                            Box::new(Spanned {
-                                v: Type::Bot,
-                                start: t12.start,
-                                line: t12.line,
-                                column: t12.column,
-                            }),
-                        ),
-                        Box::new(t12_aster),
-                    ))
-                } else {
-                    Err("eval1: no rule applies".to_string())
-                }
-            }?,
+                        let t12_aster = asterisk(t12, &resolve_conflicts(ctx, t2)?);
+                        Ok(Term::MAbs(
+                            Type::Arr(
+                                tyb.clone(),
+                                Box::new(Spanned {
+                                    v: Type::Bot,
+                                    start: t12.start,
+                                    line: t12.line,
+                                    column: t12.column,
+                                }),
+                            ),
+                            Box::new(t12_aster),
+                            Info {
+                                name: "".to_string(),
+                                assumption_num: 0,
+                            },
+                        ))
+                    } else {
+                        Err("eval1: no rule applies".to_string())
+                    }
+                }?
+            }
             // E-STRV
-            (v1, Term::MAbs(Type::Arr(_tya, tybot), t22))
-                if (*strategy == Strategy::NormalOrder
-                    || *strategy == Strategy::Cbv
-                    || *strategy == Strategy::CbvWithEta)
-                    && v1.isval()
-                    && tybot.v == Type::Bot =>
+            (v1, Term::MAbs(Type::Arr(_tya, tybot), t22, _))
+                if strategy.use_strv && v1.isval() && tybot.v == Type::Bot =>
             {
-                println!("E-STRV: {}", t);
+                // println!("E-STRV: {}", t);
                 fn star(t: &Spanned<Term>, v1: &Spanned<Term>) -> Spanned<Term> {
                     fn walk(t: &Spanned<Term>, v1: &Spanned<Term>, c: usize) -> Spanned<Term> {
                         match &t.v {
-                            Term::App(alpha, u) => match alpha.v {
-                                Term::Var(x) if x == c => Spanned {
+                            Term::App(alpha, u) => match &alpha.v {
+                                Term::Var(x, _info) if *x == c => Spanned {
                                     v: Term::App(
                                         Box::new(walk(alpha, v1, c)),
                                         Box::new(Spanned {
@@ -275,16 +383,24 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                                 },
                             },
 
-                            Term::Var(_) => t.clone(),
+                            Term::Var(_, _) => t.clone(),
                             Term::TmpVar(_) => t.clone(),
-                            Term::Abs(ty, t1) => Spanned {
-                                v: Term::Abs(ty.clone(), Box::new(walk(t1, v1, c + 1))),
+                            Term::Abs(ty, t1, info) => Spanned {
+                                v: Term::Abs(
+                                    ty.clone(),
+                                    Box::new(walk(t1, v1, c + 1)),
+                                    info.clone(),
+                                ),
                                 start: t.start,
                                 line: t.line,
                                 column: t.column,
                             },
-                            Term::MAbs(ty, t1) => Spanned {
-                                v: Term::MAbs(ty.clone(), Box::new(walk(t1, v1, c + 1))),
+                            Term::MAbs(ty, t1, info) => Spanned {
+                                v: Term::MAbs(
+                                    ty.clone(),
+                                    Box::new(walk(t1, v1, c + 1)),
+                                    info.clone(),
+                                ),
                                 start: t.start,
                                 line: t.line,
                                 column: t.column,
@@ -294,8 +410,8 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                     walk(t, v1, 0)
                 }
                 {
-                    let t22_star = star(t22, t1);
-                    let tyv1 = type_of_spanned(ctx, t1);
+                    let t22_star = star(t22, &resolve_conflicts(ctx, t1)?);
+                    let tyv1 = type_of(ctx, t1);
                     if let Ok(Type::Arr(_tya, tyb)) = tyv1 {
                         Ok(Term::MAbs(
                             Type::Arr(
@@ -308,6 +424,10 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                                 }),
                             ),
                             Box::new(t22_star),
+                            Info {
+                                name: "".to_string(),
+                                assumption_num: 0,
+                            },
                         ))
                     } else {
                         Err("eval1: no rule applies")
@@ -316,7 +436,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
             }
             // E-APP2
             (v1, _) if v1.isval() => {
-                println!("E-APP2: {}", t);
+                // println!("E-APP2: {}", t);
                 Term::App(
                     t1.clone(),
                     Box::new(Spanned {
@@ -329,7 +449,7 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
             }
             // E-APP1
             _ => {
-                println!("E-APP1: {}", t);
+                // println!("E-APP1: {}", t);
                 Term::App(
                     Box::new(Spanned {
                         v: eval1(&t1.v, ctx, strategy)?,
@@ -341,52 +461,54 @@ fn eval1(t: &Term, ctx: &Context, strategy: &Strategy) -> Result<Term, String> {
                 )
             }
         }),
-        Term::Abs(ty, t2) => match &t2.v {
+        Term::Abs(ty, t2, info) => match &t2.v {
             // E-ETA
             Term::App(t21, tvar0)
-                if (*strategy == Strategy::NormalOrder
-                    || *strategy == Strategy::CbvWithEta
-                    || *strategy == Strategy::CbnWithEta)
+                if strategy.use_eta
                     && !zero_in_fv(&t21.v)
-                    && tvar0.v == Term::Var(0) =>
+                    && matches!(tvar0.v, Term::Var(0, _)) =>
             {
-                println!("E-ETA: {}", t);
+                // println!("E-ETA: {}", t);
                 Ok(term_shift(&t21.v, -1)?)
             }
             // (E-LAM)
-            _ if *strategy == Strategy::NormalOrder => {
-                println!("E-LAM: {}", t);
-                let ctx = ctx.clone().push(ty.clone());
+            _ if strategy.use_lam => {
+                // println!("E-LAM: {}", t);
+                let mut new_ctx = ctx.clone();
+                new_ctx = new_ctx.push(ty.clone(), info.clone());
                 Ok(Term::Abs(
                     ty.clone(),
                     Box::new(Spanned {
-                        v: eval1(&t2.v, &ctx, strategy)?,
+                        v: eval1(&t2.v, &new_ctx, strategy)?,
                         start: t2.start,
                         line: t2.line,
                         column: t2.column,
                     }),
+                    info.clone(),
                 ))
             }
             _ => Err("eval1: no rule applies".to_string()),
         },
-        Term::MAbs(ty, t2) => match &t2.v {
+        Term::MAbs(ty, t2, info) => match &t2.v {
             // E-MUETA
-            Term::App(tvar0, t22) if !zero_in_fv(&t22.v) && tvar0.v == Term::Var(0) => {
-                println!("E-MUETA: {}", t);
+            Term::App(tvar0, t22) if !zero_in_fv(&t22.v) && matches!(tvar0.v, Term::Var(0, _)) => {
+                // println!("E-MUETA: {}", t);
                 Ok(term_shift(&t22.v, -1)?)
             }
             // (E-MU)
-            _ if *strategy == Strategy::NormalOrder => {
-                println!("E-MU: {}", t);
-                let ctx = ctx.clone().push(ty.clone());
+            _ if strategy.use_mu => {
+                // println!("E-MU: {}", t);
+                let mut new_ctx = ctx.clone();
+                new_ctx = new_ctx.push(ty.clone(), info.clone());
                 Ok(Term::MAbs(
                     ty.clone(),
                     Box::new(Spanned {
-                        v: eval1(&t2.v, &ctx, strategy)?,
+                        v: eval1(&t2.v, &new_ctx, strategy)?,
                         start: t2.start,
                         line: t2.line,
                         column: t2.column,
                     }),
+                    info.clone(),
                 ))
             }
             _ => Err("eval1: no rule applies".to_string()),
@@ -428,19 +550,49 @@ mod tests {
         }
     }
 
+    // Helper function to compare terms ignoring Info content
+    fn terms_equal_ignore_info(t1: &Term, t2: &Term) -> bool {
+        match (t1, t2) {
+            (Term::Var(x1, _), Term::Var(x2, _)) => x1 == x2,
+            (Term::TmpVar(s1), Term::TmpVar(s2)) => s1 == s2,
+            (Term::Abs(ty1, t1, _), Term::Abs(ty2, t2, _)) => {
+                ty1 == ty2 && terms_equal_ignore_info(&t1.v, &t2.v)
+            }
+            (Term::MAbs(ty1, t1, _), Term::MAbs(ty2, t2, _)) => {
+                ty1 == ty2 && terms_equal_ignore_info(&t1.v, &t2.v)
+            }
+            (Term::App(t11, t12), Term::App(t21, t22)) => {
+                terms_equal_ignore_info(&t11.v, &t21.v) && terms_equal_ignore_info(&t12.v, &t22.v)
+            }
+            _ => false,
+        }
+    }
+
     #[test]
     fn test_eval1() {
-        let st = Strategy::Cbv;
+        let st = Strategy::from("cbv").unwrap();
 
         // id = \x:Bool.x
         let id = Term::Abs(
             Type::TyVar("Bool".to_string()),
-            Box::new(spanned(Term::Var(0))),
+            Box::new(spanned(Term::Var(
+                0,
+                Info {
+                    name: "x".to_string(),
+                    assumption_num: 0,
+                },
+            ))),
+            Info {
+                name: "x".to_string(),
+                assumption_num: 0,
+            },
         );
         {
             // (\x.x) (\x.x) == \x.x
             let t = Term::App(Box::new(spanned(id.clone())), Box::new(spanned(id.clone())));
-            assert_eq!(eval(&t, &st).unwrap(), id);
+            let result = eval(&t, &st).unwrap();
+            // Infoの内容は無視して、構造のみを比較
+            assert!(terms_equal_ignore_info(&result, &id));
         }
 
         // tru = \t:Bool.\f:Bool.t
@@ -448,16 +600,44 @@ mod tests {
             Type::TyVar("Bool".to_string()),
             Box::new(spanned(Term::Abs(
                 Type::TyVar("Bool".to_string()),
-                Box::new(spanned(Term::Var(1))),
+                Box::new(spanned(Term::Var(
+                    1,
+                    Info {
+                        name: "t".to_string(),
+                        assumption_num: 1,
+                    },
+                ))),
+                Info {
+                    name: "f".to_string(),
+                    assumption_num: 0,
+                },
             ))),
+            Info {
+                name: "t".to_string(),
+                assumption_num: 0,
+            },
         );
         // fls = \t:Bool.\f:Bool.f
         let fls = Term::Abs(
             Type::TyVar("Bool".to_string()),
             Box::new(spanned(Term::Abs(
                 Type::TyVar("Bool".to_string()),
-                Box::new(spanned(Term::Var(0))),
+                Box::new(spanned(Term::Var(
+                    0,
+                    Info {
+                        name: "f".to_string(),
+                        assumption_num: 0,
+                    },
+                ))),
+                Info {
+                    name: "f".to_string(),
+                    assumption_num: 0,
+                },
             ))),
+            Info {
+                name: "t".to_string(),
+                assumption_num: 0,
+            },
         );
 
         {
@@ -466,7 +646,9 @@ mod tests {
                 Box::new(spanned(fls.clone())),
                 Box::new(spanned(id.clone())),
             );
-            assert_eq!(eval(&t, &st).unwrap(), id);
+            let result = eval(&t, &st).unwrap();
+            // Infoの内容は無視して、構造のみを比較
+            assert!(terms_equal_ignore_info(&result, &id));
         }
 
         // and = \b: Bool.\c:Bool.b c fls
@@ -477,12 +659,32 @@ mod tests {
                     Type::TyVar("Bool".to_string()),
                     Box::new(spanned(Term::App(
                         Box::new(spanned(Term::App(
-                            Box::new(spanned(Term::Var(1))), // b
-                            Box::new(spanned(Term::Var(0))), // c
+                            Box::new(spanned(Term::Var(
+                                1,
+                                Info {
+                                    name: "b".to_string(),
+                                    assumption_num: 1,
+                                },
+                            ))), // b
+                            Box::new(spanned(Term::Var(
+                                0,
+                                Info {
+                                    name: "c".to_string(),
+                                    assumption_num: 0,
+                                },
+                            ))), // c
                         ))),
                         Box::new(spanned(fls.clone())),
                     ))),
+                    Info {
+                        name: "c".to_string(),
+                        assumption_num: 0,
+                    },
                 ))),
+                Info {
+                    name: "b".to_string(),
+                    assumption_num: 0,
+                },
             )
         };
 
@@ -495,7 +697,9 @@ mod tests {
                 ))),
                 Box::new(spanned(fls.clone())),
             );
-            assert_eq!(eval(&t, &st).unwrap(), fls);
+            let result = eval(&t, &st).unwrap();
+            // Infoの内容は無視して、構造のみを比較
+            assert!(terms_equal_ignore_info(&result, &fls));
         }
 
         {
@@ -507,7 +711,9 @@ mod tests {
                 ))),
                 Box::new(spanned(fls.clone())),
             );
-            assert_eq!(eval(&t, &st).unwrap(), fls);
+            let result = eval(&t, &st).unwrap();
+            // Infoの内容は無視して、構造のみを比較
+            assert!(terms_equal_ignore_info(&result, &fls));
         }
 
         {
@@ -519,7 +725,9 @@ mod tests {
                 ))),
                 Box::new(spanned(tru.clone())),
             );
-            assert_eq!(eval(&t, &st).unwrap(), tru);
+            let result = eval(&t, &st).unwrap();
+            // Infoの内容は無視して、構造のみを比較
+            assert!(terms_equal_ignore_info(&result, &tru));
         }
     }
 }

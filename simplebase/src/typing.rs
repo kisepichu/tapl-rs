@@ -19,7 +19,7 @@ fn types_equal_ignore_pos(ty1: &Type, ty2: &Type) -> bool {
 #[allow(dead_code)]
 pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
     match t {
-        Term::Var(x) => match ctx.get(*x) {
+        Term::Var(x, _info) => match ctx.get(*x) {
             Some(ty) => Ok(ty.clone()),
             None => Err(format!(
                 "type check failed: {}\n: unbound variable {}",
@@ -30,8 +30,8 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
             "type check failed: {}\n: unbound variable {}",
             t, s
         )),
-        Term::Abs(ty, t2) => {
-            let ctx = ctx.clone().push(ty.clone());
+        Term::Abs(ty, t2, info) => {
+            let ctx = ctx.clone().push(ty.clone(), info.clone());
             let ty2 = type_of(&ctx, &t2.v)?;
             Ok(Type::Arr(
                 Box::new(Spanned {
@@ -79,7 +79,7 @@ pub fn type_of(ctx: &Context, t: &Term) -> Result<Type, String> {
 
 pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWithPos> {
     match &t.v {
-        Term::Var(x) => match ctx.get(*x) {
+        Term::Var(x, _info) => match ctx.get(*x) {
             Some(ty) => Ok(ty.clone()),
             None => Err(ErrorWithPos {
                 message: format!("type check failed: {}\n: unbound variable {}", t.v, x),
@@ -96,8 +96,8 @@ pub fn type_of_spanned(ctx: &Context, t: &Spanned<Term>) -> Result<Type, ErrorWi
             line: t.line,
             column: t.column,
         }),
-        Term::Abs(ty, t2) => {
-            let ctx = ctx.clone().push(ty.clone());
+        Term::Abs(ty, t2, info) => {
+            let ctx = ctx.clone().push(ty.clone(), info.clone());
             let ty2 = type_of_spanned(&ctx, t2)?;
             Ok(Type::Arr(
                 Box::new(Spanned {
