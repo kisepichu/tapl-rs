@@ -1,9 +1,11 @@
 mod eval;
 mod parser;
+mod proof;
 mod span;
 mod syntax;
 mod typing;
 
+use proof::typst_proof;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 use syntax::context::Context;
@@ -20,12 +22,8 @@ fn main() -> Result<()> {
                 }
                 if line == "help" || line == "?" {
                     println!("Type check and evaluate a term in simply typed lambda calculus.");
-                    println!(
-                        "example: (\\:Bool.if 0 then \\:Bool.\\:Bool.1 else \\:Bool.\\:Bool.0) true"
-                    );
-                    println!(
-                        "                                                   : Bool->Bool->Bool"
-                    );
+                    println!("example: (\\x:Bool.x) true");
+                    println!("     ->* true");
                     println!("     ->* \\:Bool.\\:Bool.1");
                     println!("Ctrl+C to exit");
                     continue;
@@ -54,6 +52,21 @@ fn main() -> Result<()> {
                     }
                 };
                 // println!("{:?}", ty);
+
+                let ctx = Context::default();
+                let proof = match typst_proof(&ctx, &t) {
+                    Ok(pf) => pf,
+                    Err(e) => {
+                        println!("input= {}", t.v);
+                        println!(
+                            "{}\n{}",
+                            parser::display_position(line.as_str(), e.line, e.column),
+                            e
+                        );
+                        continue;
+                    }
+                };
+                println!("proof=\n\n{}", proof);
 
                 println!("input= {}: {}", t.v, ty);
                 let t = match eval::eval(&t.v) {

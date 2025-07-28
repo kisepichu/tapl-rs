@@ -5,16 +5,16 @@ use crate::{span::Spanned, syntax::term::Term};
 fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
     fn walk(t: &Term, d: isize, c: usize) -> Result<Term, String> {
         match t {
-            Term::Var(x) => {
+            Term::Var(x, info) => {
                 if *x >= c {
                     let s: usize = usize::from_isize(*x as isize + d).ok_or("minus after shift")?;
-                    Ok(Term::Var(s))
+                    Ok(Term::Var(s, info.clone()))
                 } else {
-                    Ok(Term::Var(*x))
+                    Ok(Term::Var(*x, info.clone()))
                 }
             }
             Term::TmpVar(_) => Ok(t.clone()),
-            Term::Abs(ty, t1) => Ok(Term::Abs(
+            Term::Abs(ty, t1, info) => Ok(Term::Abs(
                 ty.clone(),
                 Box::new(Spanned {
                     v: walk(&t1.v, d, c + 1)?,
@@ -22,6 +22,7 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
                     line: t1.line,
                     column: t1.column,
                 }),
+                info.clone(),
             )),
             Term::App(t1, t2) => Ok(Term::App(
                 Box::new(Spanned {
@@ -45,15 +46,15 @@ fn term_shift(t: &Term, d: isize) -> Result<Term, String> {
 fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
     fn walk(j: isize, s: &Term, c: isize, t: &Term) -> Result<Term, String> {
         match t {
-            Term::Var(k) => {
+            Term::Var(k, info) => {
                 if Some(*k) == (j + c).try_into().ok() {
                     term_shift(s, c)
                 } else {
-                    Ok(Term::Var(*k))
+                    Ok(Term::Var(*k, info.clone()))
                 }
             }
             Term::TmpVar(_) => Ok(t.clone()),
-            Term::Abs(ty, t1) => Ok(Term::Abs(
+            Term::Abs(ty, t1, info) => Ok(Term::Abs(
                 ty.clone(),
                 Box::new(Spanned {
                     v: walk(j, s, c + 1, &t1.v)?,
@@ -61,6 +62,7 @@ fn term_subst(j: isize, s: &Term, t: &Term) -> Result<Term, String> {
                     line: t1.line,
                     column: t1.column,
                 }),
+                info.clone(),
             )),
             Term::App(t1, t2) => Ok(Term::App(
                 Box::new(Spanned {
@@ -88,7 +90,7 @@ fn term_subst_top(s: &Term, t: &Term) -> Result<Term, String> {
 fn eval1(t: &Term) -> Result<Term, String> {
     match t {
         Term::App(t1, t2) => Ok(match (&t1.v, &t2.v) {
-            (Term::Abs(_ty, t12), v2) if v2.isval() => term_subst_top(v2, &t12.v)?,
+            (Term::Abs(_ty, t12, _info), v2) if v2.isval() => term_subst_top(v2, &t12.v)?,
             (v1, _) if v1.isval() => Term::App(
                 t1.clone(),
                 Box::new(Spanned {
@@ -131,6 +133,7 @@ pub fn eval(t: &Term) -> Result<Term, String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::syntax::term::Info;
     use crate::syntax::r#type::Type;
 
     use super::*;
@@ -150,7 +153,17 @@ mod tests {
         // id = \x:Bool.x
         let id = Term::Abs(
             Type::TyVar("Bool".to_string()),
-            Box::new(spanned(Term::Var(0))),
+            Box::new(spanned(Term::Var(
+                0,
+                Info {
+                    name: "0".to_string(),
+                    assumption_num: 0,
+                },
+            ))),
+            Info {
+                name: "x".to_string(),
+                assumption_num: 0,
+            },
         );
         {
             // (\x.x) (\x.x) == \x.x
@@ -163,16 +176,44 @@ mod tests {
             Type::TyVar("Bool".to_string()),
             Box::new(spanned(Term::Abs(
                 Type::TyVar("Bool".to_string()),
-                Box::new(spanned(Term::Var(1))),
+                Box::new(spanned(Term::Var(
+                    1,
+                    Info {
+                        name: "1".to_string(),
+                        assumption_num: 1,
+                    },
+                ))),
+                Info {
+                    name: "f".to_string(),
+                    assumption_num: 0,
+                },
             ))),
+            Info {
+                name: "t".to_string(),
+                assumption_num: 0,
+            },
         );
         // fls = \t:Bool.\f:Bool.f
         let fls = Term::Abs(
             Type::TyVar("Bool".to_string()),
             Box::new(spanned(Term::Abs(
                 Type::TyVar("Bool".to_string()),
-                Box::new(spanned(Term::Var(0))),
+                Box::new(spanned(Term::Var(
+                    0,
+                    Info {
+                        name: "0".to_string(),
+                        assumption_num: 0,
+                    },
+                ))),
+                Info {
+                    name: "x".to_string(),
+                    assumption_num: 0,
+                },
             ))),
+            Info {
+                name: "t".to_string(),
+                assumption_num: 0,
+            },
         );
 
         {
@@ -192,12 +233,32 @@ mod tests {
                     Type::TyVar("Bool".to_string()),
                     Box::new(spanned(Term::App(
                         Box::new(spanned(Term::App(
-                            Box::new(spanned(Term::Var(1))), // b
-                            Box::new(spanned(Term::Var(0))), // c
+                            Box::new(spanned(Term::Var(
+                                1,
+                                Info {
+                                    name: "1".to_string(),
+                                    assumption_num: 1,
+                                },
+                            ))), // b
+                            Box::new(spanned(Term::Var(
+                                0,
+                                Info {
+                                    name: "0".to_string(),
+                                    assumption_num: 0,
+                                },
+                            ))), // c
                         ))),
                         Box::new(spanned(fls.clone())),
                     ))),
+                    Info {
+                        name: "c".to_string(),
+                        assumption_num: 0,
+                    },
                 ))),
+                Info {
+                    name: "b".to_string(),
+                    assumption_num: 0,
+                },
             )
         };
 
