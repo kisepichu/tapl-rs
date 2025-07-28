@@ -1,4 +1,4 @@
 [workspace]
 
-members = [ "languages/simplelambdamu", "languages/fullsimple", "languages/simplebool", "languages/simplebase", "languages/untyped", "wasm/simplebase-wasm" ]
+members = [ "languages/simplelambdamu", "languages/fullsimple", "languages/simplebool", "languages/simplebase", "languages/untyped", "wasm/simplebase-wasm", "wasm/simplelambdamu-wasm" ]
 resolver = "3"
