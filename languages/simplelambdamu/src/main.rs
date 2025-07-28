@@ -1,20 +1,14 @@
-mod eval;
-mod parser;
-mod proof;
-mod span;
-mod syntax;
-mod typing;
-
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
-use typing::type_of;
-
-use crate::proof::typst_proof;
-use crate::syntax::context::Context;
+use simplelambdamu::eval::{Strategy, eval};
+use simplelambdamu::parser;
+use simplelambdamu::proof::typst_proof;
+use simplelambdamu::syntax::context::Context;
+use simplelambdamu::typing::type_of;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
-    let mut current_strategy = eval::Strategy::from("cbv").unwrap();
+    let mut current_strategy = Strategy::from("cbv").unwrap();
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -34,7 +28,7 @@ fn main() -> Result<()> {
                 }
                 if line.starts_with("strategy") {
                     if let Some(input) = line.split_whitespace().nth(1) {
-                        if let Ok(strategy) = eval::Strategy::from(input) {
+                        if let Ok(strategy) = Strategy::from(input) {
                             current_strategy = strategy;
                             println!("Strategy set to: {}", current_strategy);
                         } else {
@@ -93,7 +87,7 @@ fn main() -> Result<()> {
                 println!("proof:\n\n{}", proof);
 
                 println!("input= {}: {}", t.v, ty);
-                let t = match eval::eval(&t.v, &current_strategy) {
+                let t = match eval(&t.v, &current_strategy) {
                     Ok(t) => t,
                     Err(e) => {
                         println!("eval error: {}", e);

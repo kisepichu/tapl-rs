@@ -1,13 +1,8 @@
-mod eval;
-mod parser;
-mod span;
-mod syntax;
-mod typing;
-
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
-use syntax::context::Context;
-use typing::type_of_spanned;
+use untyped::eval::eval;
+use untyped::parser;
+use untyped::span::Spanned;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
@@ -19,47 +14,35 @@ fn main() -> Result<()> {
                     break;
                 }
                 if line == "help" || line == "?" {
-                    println!("Type check and evaluate a term in simply typed lambda calculus.");
                     println!(
-                        "example: (\\:Bool.if 0 then \\:Bool.\\:Bool.1 else \\:Bool.\\:Bool.0) true"
+                        "Evaluate a term in the untyped lambda calculus using de Bruijn indices."
                     );
-                    println!(
-                        "                                                   : Bool->Bool->Bool"
-                    );
-                    println!("     ->* \\:Bool.\\:Bool.1");
+                    println!("example: (\\\\1 0)\\0 ->* \\(\\0)0");
+                    println!("         (corresponds to (λx.λy.x y)λx.x ->* λy.(λx.x)y )");
                     println!("Ctrl+C to exit");
                     continue;
                 }
 
-                let t = match parser::parse_spanned_and_render_err(line.as_str()) {
+                let t = match parser::parse_and_render_err(line.as_str()) {
                     Ok(t) => t,
                     Err((e, display_position)) => {
                         println!("{}\n{}", display_position, e);
                         continue;
                     }
                 };
-                // println!("{:?}", t);
-
-                let ctx = Context::default();
-                let ty = match type_of_spanned(&ctx, &t) {
-                    Ok(ty) => ty,
-                    Err(e) => {
-                        println!("input= {}", t.v);
-                        println!(
-                            "{}\n{}",
-                            parser::display_position(line.as_str(), e.line, e.column),
-                            e
-                        );
-                        continue;
-                    }
+                let t = Spanned {
+                    v: t,
+                    start: 0,
+                    line: 0,
+                    column: 0,
                 };
-                // println!("{:?}", ty);
 
-                println!("input= {}: {}", t.v, ty);
-                let t = match eval::eval(&t.v) {
+                println!("input= {}", t);
+                // println!("{:?}", t);
+                let t = match eval(&t) {
                     Ok(t) => t,
                     Err(e) => {
-                        println!("eval error: {}", e);
+                        println!("eval error: {:?}", e);
                         continue;
                     }
                 };

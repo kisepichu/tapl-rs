@@ -1,11 +1,17 @@
 [package]
-name = "simplelambdamu"
+name = "fullsimple"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "fullsimple"
+path = "src/main.rs"
 
 [dependencies]
 nom = "8.0.0"
 nom_locate = "5.0.0"
 num = "0.4.3"
 rstest = "0.25.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rustyline = "15.0.0"

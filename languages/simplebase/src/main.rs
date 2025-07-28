@@ -1,16 +1,10 @@
-mod eval;
-mod parser;
-mod proof;
-mod span;
-mod syntax;
-mod typing;
-
-use eval::{Strategy, eval};
-use proof::typst_proof;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
-use syntax::context::Context;
-use typing::type_of_spanned;
+use simplebase::eval::{Strategy, eval};
+use simplebase::parser;
+use simplebase::proof::typst_proof;
+use simplebase::syntax::context::Context;
+use simplebase::typing::type_of_spanned;
 
 fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
