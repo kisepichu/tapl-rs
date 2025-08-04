@@ -28,6 +28,10 @@ jobs:
       - name: Install jq
         run: sudo apt-get install jq
 
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Loop through wasm crates and publish
         run: |
           set -e
