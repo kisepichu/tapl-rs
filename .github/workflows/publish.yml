@@ -1,0 +1,60 @@
+name: Publish all WASM crates to GitHub Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "release/*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@${{ github.repository_owner }}"
+
+      - name: Install jq
+        run: sudo apt-get install jq
+
+      - name: Loop through wasm crates and publish
+        run: |
+          set -e
+
+          for dir in wasm/*-wasm/; do
+            echo "🔧 Building $dir"
+            cd "$dir"
+
+            # Build the crate using wasm-pack
+            wasm-pack build --target bundler --scope "${{ github.repository_owner }}"
+
+            # Modify package.json in ./pkg/
+            cd pkg
+            jq \
+              --arg repo_url "https://github.com/${{ github.repository }}" \
+              '. + {
+                publishConfig: { registry: "https://npm.pkg.github.com/" },
+                repository: $repo_url
+              }' package.json > package.tmp.json
+            mv package.tmp.json package.json
+
+            # Publish to GitHub Packages
+            echo "🚀 Publishing $(jq -r .name package.json)"
+            npm publish --registry=https://npm.pkg.github.com --access restricted
+
+            # Return to root
+            cd ../../
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

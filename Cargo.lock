@@ -547,17 +547,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "simplebase-wasm"
-version = "0.1.0"
-dependencies = [
- "js-sys",
- "serde",
- "serde-wasm-bindgen",
- "simplebase",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "simplebool"
 version = "0.1.0"
 dependencies = [
@@ -577,17 +566,6 @@ dependencies = [
  "num",
  "rstest",
  "rustyline",
-]
-
-[[package]]
-name = "simplelambdamu-wasm"
-version = "0.1.0"
-dependencies = [
- "js-sys",
- "serde",
- "serde-wasm-bindgen",
- "simplelambdamu",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -611,6 +589,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tapl-rs-simplebase-wasm"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "simplebase",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "tapl-rs-simplelambdamu-wasm"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "simplelambdamu",
+ "wasm-bindgen",
 ]
 
 [[package]]
