@@ -49,7 +49,7 @@ jobs:
               --arg repo_url "https://github.com/${{ github.repository }}" \
               '. + {
                 publishConfig: { registry: "https://npm.pkg.github.com/" },
-                repository: $repo_url
+                repository: { type: "git", url: $repo_url }
               }' package.json > package.tmp.json
             mv package.tmp.json package.json
 
@@ -58,7 +58,7 @@ jobs:
             npm publish --registry=https://npm.pkg.github.com --access restricted
 
             # Return to root
-            cd ../../
+            cd ../../../
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
