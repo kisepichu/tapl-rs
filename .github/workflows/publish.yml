@@ -41,7 +41,7 @@ jobs:
             cd "$dir"
 
             # Build the crate using wasm-pack
-            wasm-pack build --target bundler --scope "${{ github.repository_owner }}"
+            wasm-pack build --target web --scope "${{ github.repository_owner }}"
 
             # Modify package.json in ./pkg/
             cd pkg
